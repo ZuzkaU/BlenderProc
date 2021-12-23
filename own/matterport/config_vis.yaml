@@ -1,10 +1,9 @@
 {
   "version": 3,
   "setup": {
-    "blender_install_path": "/rhome/mdahnert/blender/",
+    "blender_install_path": "/home/<env:USER>/blender/",
     "pip": [
       "h5py",
-      "pydevd-pycharm~=202.6397.98",
       "pypng==0.0.20",
       "readply"
     ]

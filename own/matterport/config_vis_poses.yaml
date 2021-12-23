@@ -3,11 +3,9 @@
   "delete_temporary_files_afterwards": False,
 
   "setup": {
-    "blender_install_path": "/rhome/mdahnert/blender/",
+    "blender_install_path": "/home/<env:USER>/blender/",
     "pip": [
-#        "pyyaml==5.3.1",
         "h5py",
-#      "pydevd-pycharm~=202.6397.98",
       "pypng==0.0.20",
       "tqdm",
     ]
