@@ -255,16 +255,6 @@ class Front3DLoader(LoaderInterface):
             #if result:
             #    raise Exception("The generation of the mesh: {} failed!".format(used_obj_name))
 
-        # assign instance ids from room information
-        for room in data["scene"]["room"]:
-            # for each object in that room
-            for child in room["children"]:
-                if "mesh" in child["instanceid"]:
-                    # find the object where the uid matches the child ref id
-                    for obj in self.created_objects:
-                        if obj["uid"] == child["ref"]:
-                            obj["instanceid"] = child["instanceid"]
-
     def _redraw_walls(self):
         # For each room
         # col = bpy.data.collections.get("Collection")
@@ -387,8 +377,6 @@ class Front3DLoader(LoaderInterface):
                         obj["nyu_category_id"] = 1
                         obj["category_id"] = 13
                         obj["room_id"] = room_obj["room_id"]
-                        obj["instanceid"] = f"wall/{room_obj['room_id']}_{edge.index}"
-
                         self.created_objects.append(obj)
                         col.objects.link(obj)
                         v0 = edge.verts[0].co
@@ -508,14 +496,14 @@ class Front3DLoader(LoaderInterface):
             if os.path.exists(obj_file):
                 # load all objects from this .obj file
                 objs = Utility.import_objects(filepath=obj_file)
+
+
                 # extract the name, which serves as category id
                 used_obj_name = ele["category"]
-
                 for obj in objs:
                     obj.name = used_obj_name
                     # add some custom properties
                     obj["uid"] = ele["uid"]
-                    obj["jid"] = ele["jid"]
                     # this custom property determines if the object was used before
                     # is needed to only clone the second appearance of this object
                     obj["is_used"] = False
@@ -650,7 +638,6 @@ class Front3DLoader(LoaderInterface):
                             new_obj["room_id"] = room_id
                             new_obj["type"] = "Object"  # is an object used for the interesting score
                             new_obj["coarse_grained_class"] = new_obj["category_id"]
-                            new_obj["instanceid"] = child["instanceid"]
                             # this flips the y and z coordinate to bring it to the blender coordinate system
                             new_obj.location = mathutils.Vector(child["pos"]).xzy
                             new_obj.scale = child["scale"]

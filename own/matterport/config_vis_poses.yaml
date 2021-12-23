@@ -1,0 +1,47 @@
+{
+  "version": 3,
+  "delete_temporary_files_afterwards": False,
+
+  "setup": {
+    "blender_install_path": "/rhome/mdahnert/blender/",
+    "pip": [
+#        "pyyaml==5.3.1",
+        "h5py",
+#      "pydevd-pycharm~=202.6397.98",
+      "pypng==0.0.20",
+      "tqdm",
+    ]
+  },
+  "modules": [
+    {
+      "module": "main.Initializer",
+      "config":{
+        "global": {
+          "output_dir": "<args:1>",
+          "temp_dir": "<args:1>",
+          "resolution_x": 1280,
+          "resolution_y": 1024,
+          "fov": 1.0471975511,
+        }
+      }
+    },
+    {
+        "module": "manipulators.WorldManipulator",
+        "config": {
+            "cf_set_world_category_id": 0  # this sets the worlds background category id to 0
+        }
+    },
+    {
+      "module": "loader.MatterportLoader",
+      "config": {
+        "house_path": "<args:0>",
+      }
+    },
+    {
+        "module": "camera.MatterportPoseLoader",
+        "config": {
+            "house_path": "<args:0>",
+        }
+    }
+  ]
+}

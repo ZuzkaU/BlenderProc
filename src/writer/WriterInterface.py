@@ -24,6 +24,8 @@ class WriterInterface(Module):
                               "attributes that can be used here. Type: list."
        "output_file_prefix", "The prefix of the file that should be created. Type: string."
        "output_key", "The key which should be used for storing the output in a merged file. Type: string."
+       "transparent_background", "If true, the alpha channel will be written to file. Type: bool. Default: False."
+                                
     """
     def __init__(self, config):
         Module.__init__(self, config)
@@ -67,6 +69,8 @@ class WriterInterface(Module):
             return self.name_to_id[item.name]
         elif attribute_name == "name":
             return item.name
+        elif attribute_name == "matrix":
+            return np.array(item.matrix_world).tolist()
         elif attribute_name == "location":
             return Utility.transform_point_to_blender_coord_frame(item.location, self.destination_frame)
         elif attribute_name == "rotation_euler":
@@ -132,7 +136,8 @@ class WriterInterface(Module):
         file_ending = file_path[file_path.rfind(".") + 1:].lower()
 
         if file_ending in ["exr", "png", "jpg"]:
-            return load_image(file_path)
+            #num_channels is 4 if transparent_background is true in config
+            return load_image(file_path, num_channels = 3 + self.config.get_bool("transparent_background", False))
         elif file_ending in ["npy", "npz"]:
             return self._load_npy(file_path)
         elif file_ending in ["csv"]:

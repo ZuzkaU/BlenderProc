@@ -53,6 +53,27 @@ def local_to_world(cords, world):
     """
     return [world @ Vector(cord) for cord in cords]
 
+
+def world_to_camera(cam, coord, world2camera):
+    co_local = world2camera @ coord
+    z = -co_local.z
+
+    frame = [-v for v in cam.view_frame(scene=bpy.context.scene)[:3]]
+    if cam.type != 'ORTHO':
+        if z == 0.0:
+            return Vector((0.5, 0.5, 0.0))
+        else:
+            frame = [(v / (v.z / z)) for v in frame]
+
+    min_x, max_x = frame[1].x, frame[2].x
+    min_y, max_y = frame[0].y, frame[1].y
+
+    x = (co_local.x - min_x) / (max_x - min_x)
+    y = (co_local.y - min_y) / (max_y - min_y)
+
+    return Vector((x, y, z))
+
+
 def get_bounds(obj):
     """
     :param obj: a mesh object
@@ -335,6 +356,7 @@ def load_image(file_path, num_channels=3):
     if file_path.endswith('.png') or file_path.endswith('.jpg'):
         # convert the 0 to 1 space to 0 ... 255 and save it as uint8
         img = (img * 255).astype(np.uint8)
+    loaded.buffers_free()
     return img[:, :, :num_channels]
 
 def get_bound_volume(obj):
@@ -374,3 +396,97 @@ def duplicate_objects(objects):
     duplicates = bpy.context.selected_objects
     bpy.ops.object.select_all(action='DESELECT')
     return duplicates
+
+
+def hide_all_geometry():
+    # Hide all objects
+    for collection in bpy.data.collections:
+        # two step approach to hide objects to avoid crash on Ubuntu: https://blender.stackexchange.com/questions/169672/object-hide-render-crashes-blender-before-starting-to-bake/170197#170197
+        objects = [obj for obj in collection.all_objects]
+        for obj in objects:
+            # print(f"Hide {obj.name}")
+            obj.hide_viewport = True
+            obj.hide_render = True
+
+
+def show_collection(collection):
+    for obj in collection.children:
+        obj.hide_viewport = False
+        obj.hide_render = False
+
+
+def get_centroid(mesh):
+    x, y, z = [sum([v.co[i] for v in mesh.data.vertices]) for i in range(3)]
+    count = float(len(mesh.data.vertices))
+    center = mesh.matrix_world @ (Vector((x, y, z)) / count)
+
+    return center
+
+
+def write_ply(vertices, indices, output_file):
+    if indices is None:
+        indices = []
+
+    file = open(output_file, 'w')
+    file.write('ply \n')
+    file.write('format ascii 1.0\n')
+    file.write('element vertex {:d}\n'.format(len(vertices)))
+    file.write('property float x\n')
+    file.write('property float y\n')
+    file.write('property float z\n')
+    file.write('element face {:d}\n'.format(len(indices)))
+    file.write('property list uchar uint vertex_indices\n')
+    file.write('end_header\n')
+
+    for vertex in vertices:
+        file.write("{:f} {:f} {:f}\n".format(vertex[0], vertex[1], vertex[2]))
+    for ind in indices:
+        file.write('3 {:d} {:d} {:d}\n'.format(ind[0], ind[1], ind[2], ))
+    file.close()
+
+
+# color palette for nyu40 labels
+def create_color_palette():
+    return [
+       (0, 0, 0),
+       (174, 199, 232),		# wall
+       (152, 223, 138),		# floor
+       (31, 119, 180), 		# cabinet
+       (255, 187, 120),		# bed
+       (188, 189, 34), 		# chair
+       (140, 86, 75),  		# sofa
+       (255, 152, 150),		# table
+       (214, 39, 40),  		# door
+       (197, 176, 213),		# window
+       (148, 103, 189),		# bookshelf
+       (196, 156, 148),		# picture
+       (23, 190, 207), 		# counter
+       (178, 76, 76),
+       (247, 182, 210),		# desk
+       (66, 188, 102),
+       (219, 219, 141),		# curtain
+       (140, 57, 197),
+       (202, 185, 52),
+       (51, 176, 203),
+       (200, 54, 131),
+       (92, 193, 61),
+       (78, 71, 183),
+       (172, 114, 82),
+       (255, 127, 14), 		# refrigerator
+       (91, 163, 138),
+       (153, 98, 156),
+       (140, 153, 101),
+       (158, 218, 229),		# shower curtain
+       (100, 125, 154),
+       (178, 127, 135),
+       (120, 185, 128),
+       (146, 111, 194),
+       (44, 160, 44),  		# toilet
+       (112, 128, 144),		# sink
+       (96, 207, 209),
+       (227, 119, 194),		# bathtub
+       (213, 92, 176),
+       (94, 106, 211),
+       (82, 84, 163),  		# otherfurn
+       (100, 85, 144),
+    ]

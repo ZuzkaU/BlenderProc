@@ -34,7 +34,7 @@ class Pipeline:
             GlobalStorage.add_to_config_before_init("avoid_rendering", True)
 
         config_object = Config(config)
-        self._do_clean_up_temp_dir = config_object.get_bool("delete_temporary_files_afterwards", True)
+        self._do_clean_up_temp_dir = config_object.get_bool("delete_temporary_files_afterwards", False)
         self._temp_dir = Utility.get_temporary_directory(config_object)
         os.makedirs(self._temp_dir, exist_ok=True)
 

@@ -1,0 +1,76 @@
+{
+  "version": 3,
+  "delete_temporary_files_afterwards": False,
+
+  "setup": {
+    "blender_install_path": "/rhome/mdahnert/blender/",
+    "pip": [
+        "pyyaml==5.3.1",
+        "h5py",
+        "pydevd-pycharm~=202.6397.98",
+        "pypng==0.0.20",
+        "tqdm",
+    ]
+  },
+  "modules": [
+    {
+      "module": "main.Initializer",
+      "config":{
+        "global": {
+          "output_dir": "<args:1>",
+          "temp_dir": "<args:1>",
+          "resolution_x": 1280,
+          "resolution_y": 1024,
+          "fov": 1.0471975511,
+        }
+      }
+    },
+    {
+        "module": "manipulators.WorldManipulator",
+        "config": {
+            "cf_set_world_category_id": 0  # this sets the worlds background category id to 0
+        }
+    },
+    {
+      "module": "loader.MatterportLoader",
+      "config": {
+        "house_path": "<args:0>",
+      }
+    },
+    {
+        "module": "camera.MatterportPoseLoader",
+        "config": {
+            "house_path": "<args:0>",
+        }
+    },
+    {
+        "module": "renderer.SegMapRenderer",
+        "config": {
+            "map_by": ["class", "instance", "region_id", "name"],
+            "default_values": {"jid": "", "region_id": -1},
+            "use_alpha": True
+        }
+    },
+    {
+        "module": "renderer.RgbRenderer",
+        "config": {
+            "output_key": "colors",
+            "samples": 1,
+            "render_normals": True,
+            "render_distance": True,
+            "use_mist_distance": False,
+        }
+    },
+    {
+        "module": "writer.MatterportWriter",
+        "config": {
+            "append_to_existing_output": True,
+            "postprocessing_modules": {
+                "distance": [
+                {"module": "postprocessing.Dist2Depth"}
+                ]
+            }
+        }
+    }
+  ]
+}

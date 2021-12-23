@@ -1,0 +1,139 @@
+# Args: <PATH_TO_3D-Front_json> <PATH_TO_3D-Future-model> <output>
+{
+  "version": 3,
+  "setup": {
+    "blender_install_path": "/rhome/mdahnert/blender/",
+    "pip": [
+      "h5py",
+      "pydevd-pycharm~=202.6397.98"
+    ]
+  },
+  "modules": [
+    {
+      "module": "main.Initializer",
+      "config":{
+        "global": {
+          "output_dir": "<args:2>",
+          "temp_dir": "<args:2>",
+          "resolution_x": 320,
+          "resolution_y": 240,
+          "fov": 1.0471975511,
+        }
+      }
+    },
+    {
+      "module": "loader.Front3DLoader",
+      "config": {
+        "json_path": "<args:0>",
+        "3D_future_model_path": "<args:1>",
+        "ceiling_light_strength": 1.0,
+        "ignore_object_types": ["WallOuter", "WallBottom", "WallTop", "Pocket", "SlabSide", "SlabBottom", "SlabTop",
+                                "Front", "Back", "Baseboard", "Door", "Window", "BayWindow", "Hole", "WallInner", "Beam"],
+        "redraw_walls": True,
+        "replace_ceiling": True,
+        "save_ceiling": True,
+        "save_walls": True,
+        "save_floor": True
+      }
+    },
+    {
+      "module": "manipulators.WorldManipulator",
+      "config": {
+        "cf_set_world_category_id": 0  # this sets the worlds background category id to 0
+      }
+    },
+    {
+        "module": "camera.CameraLoader",
+        "config": {
+            "path": "<args:3>",
+            "file_format": "cam2world_matrix customprop_room_id",
+            "source_frame": ["X", "Y", "Z"],
+            "default_cam_param": {
+                "rotation": {
+                    "format": "euler"
+                },
+                "fov_is_half": False
+            }
+              #          "cam2world_matrix":[0.999617, -0.0109045, 0.0254317, 47.6264,
+              #                               -2.51457e-008, -0.919077, -0.394079, 1.58137,
+              #                               0.0276709, 0.393927, -0.918725, 40.3926,
+              #                               0, 0, 0, 1]
+        }
+    },
+#    {
+#      "module": "camera.Front3DCameraSampler",
+#      "config": {
+#        "cam_poses": [
+#          {
+#            "number_of_samples": 10,
+#            "min_interest_score": 0.15,
+#            "proximity_checks": {
+#              "min": 1.0,
+#              "avg": {
+#                "min": 2.5,
+#                "max": 3.5,
+#              },
+#              "no_background": True
+#            },
+#            "location": {
+#              "provider":"sampler.Uniform3d",
+#              "max":[0, 0, 1.8],
+#              "min":[0, 0, 1.4]
+#            },
+#            "rotation": {
+#              "value": {
+#                "provider":"sampler.Uniform3d",
+#                "max":[1.338, 0, 6.283185307],
+#                "min":[1.2217, 0, 0]
+#              }
+#            }
+#          }
+#        ]
+#      }
+#    },
+    {
+        "module": "renderer.SegMapRenderer",
+        "config": {
+            "map_by": ["class", "instance", "name", "jid", "instanceid"],
+            "default_values": {"jid": "", "instanceid": ""},
+            "use_alpha": True
+        }
+    },
+    {
+        "module": "renderer.RgbRenderer",
+        "config": {
+            "output_key": "colors",
+            "samples": 256,
+            "render_normals": True,
+            "render_distance": True,
+            "use_mist_distance": False,
+        }
+    },
+#    {
+#      "module": "renderer.RgbRenderer",
+#      "config": {
+#        "output_key": "colors",
+#        "samples": 350,
+#        "render_normals": True
+#      }
+#    },
+#    {
+#      "module": "renderer.SegMapRenderer",
+#      "config": {
+#        "map_by": "class"
+#      }
+#    },
+#    {
+#      "module": "writer.Hdf5Writer",
+#      "config": {
+#        "postprocessing_modules": {
+#          "depth": [
+#            {
+#              "module": "postprocessing.TrimRedundantChannels",
+#            }
+#          ]
+#        }
+#      }
+#    }
+  ]
+}

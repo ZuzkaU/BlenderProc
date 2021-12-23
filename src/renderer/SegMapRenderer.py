@@ -1,8 +1,11 @@
 import csv
+import json
 import os
+from pathlib import Path
 
 import bpy
 import numpy as np
+from tqdm import tqdm
 
 from src.renderer.RendererInterface import RendererInterface
 from src.utility.BlenderUtility import load_image, get_all_mesh_objects
@@ -90,6 +93,19 @@ class SegMapRenderer(RendererInterface):
         # stored is [-2048, 2048]. As blender does not allow negative values for colors, we use [0, 2048] ** 3 as our
         # color space which allows ~8 billion different colors/objects. This should be enough.
         self.render_colorspace_size_per_dimension = 2048
+        self._convert_to_npz = config.get_bool("convert_to_npz", True)
+
+        if self._convert_to_npz:
+            self.in_dir = self.config.get_string("in_dir")
+            # load frame mapping
+            self.frame_mapping = {}
+            with open(Path(self.in_dir) / "frame_names.txt") as f:
+                content = f.readlines()
+                for line in content:
+                    parts = line.strip().split()
+                    key = int(parts[0])
+                    value = parts[1]
+                    self.frame_mapping[key] = value
 
     def _colorize_object(self, obj, color):
         """ Adjusts the materials of the given object, s.t. they are ready for rendering the seg map.
@@ -136,22 +152,39 @@ class SegMapRenderer(RendererInterface):
         :return: The num_splits_per_dimension of the spanned color space, the color map
         """
         # + 1 for the background
-        colors, num_splits_per_dimension = Utility.generate_equidistant_values(len(objects) + 1,
+        unique_instances = list()
+        # unique_instances.append(bpy.context.scene.world)  # add the world background as an object to this list
+        for obj in objects:
+            if "instanceid" in obj and obj["instanceid"] not in unique_instances:
+                unique_instances.append(obj)
+
+        colors, num_splits_per_dimension = Utility.generate_equidistant_values(len(unique_instances) + 1,
                                                                                self.render_colorspace_size_per_dimension)
         # this list maps ids in the image back to the objects
         color_map = []
 
         # Set world background label, which is always label zero
         self._set_world_background_color(colors[0])
-        color_map.append(bpy.context.scene.world)  # add the world background as an object to this list
+        # color_map.append(bpy.context.scene.world)  # add the world background as an object to this list
 
-        for idx, obj in enumerate(objects):
-            self._colorize_object(obj, colors[idx + 1])
-            color_map.append(obj)
+        for idx, instance_id in enumerate(unique_instances):
+            for obj in objects:
+                if "instanceid" in obj and obj["instanceid"] == instance_id["instanceid"]:
+                    self._colorize_object(obj, colors[idx + 1])
+                    color_map.append(obj)
+        unique_instances.insert(0, bpy.context.scene.world)
+        # for idx, obj in enumerate(objects):
+        #     self._colorize_object(obj, colors[idx + 1])
+        #     color_map.append(obj)
 
-        return colors, num_splits_per_dimension, color_map
+        return colors, num_splits_per_dimension, color_map, unique_instances
 
     def run(self):
+        if self._convert_to_npz:
+            with open(Path(self._output_dir) / "instance_mapping.json") as f:
+                self.instance_mapping = json.load(f)
+
+
         with Utility.UndoAfterExecution():
             self._configure_renderer(default_samples=1)
 
@@ -159,7 +192,7 @@ class SegMapRenderer(RendererInterface):
             # Get objects with meshes (i.e. not lights or cameras)
             objs_with_mats = get_all_mesh_objects()
 
-            colors, num_splits_per_dimension, used_objects = self._colorize_objects_for_instance_segmentation(
+            colors, num_splits_per_dimension, used_objects, used_uids = self._colorize_objects_for_instance_segmentation(
                 objs_with_mats)
 
             bpy.context.scene.render.image_settings.file_format = "OPEN_EXR"
@@ -179,10 +212,7 @@ class SegMapRenderer(RendererInterface):
             self._render("seg_", custom_file_path=temporary_segmentation_file_path)
 
             # Find optimal dtype of output based on max index
-            for dtype in [np.uint8, np.uint16, np.uint32]:
-                optimal_dtype = dtype
-                if np.iinfo(optimal_dtype).max >= len(colors) - 1:
-                    break
+            optimal_dtype = np.int32
 
             # get the type of mappings which should be performed
             used_attributes = self.config.get_raw_dict("map_by", "class")
@@ -206,9 +236,16 @@ class SegMapRenderer(RendererInterface):
             list_of_used_attributes = []
 
             # After rendering
-            if not self._avoid_rendering:
-                for frame in range(bpy.context.scene.frame_start, bpy.context.scene.frame_end):  # for each rendered frame
-                    file_path = temporary_segmentation_file_path + "%04d" % frame + ".exr"
+            if not self._avoid_rendering or self._convert_to_npz:
+                print("SegMap: Converting to npz")
+                for frame in tqdm(range(bpy.context.scene.frame_start, bpy.context.scene.frame_end)):  # for each rendered frame
+
+                    if self._convert_to_npz:
+                        frame_name = self.frame_mapping[frame]
+                        parts = frame_name.split("_")
+                        file_path = os.path.join(self.in_dir, f"{parts[0]}_seg{parts[1]}_{parts[2]}.exr")
+                    else:
+                        file_path = temporary_segmentation_file_path + "%04d" % frame + ".exr"
                     segmentation = load_image(file_path)
 
                     segmap = Utility.map_back_from_equally_spaced_equidistant_values(segmentation,
@@ -218,7 +255,7 @@ class SegMapRenderer(RendererInterface):
 
                     used_object_ids = np.unique(segmap)
                     max_id = np.max(used_object_ids)
-                    if max_id >= len(used_objects):
+                    if max_id >= len(used_uids) + 1:  # include world
                         raise Exception("There are more object colors than there are objects")
                     combined_result_map = []
                     there_was_an_instance_rendering = False
@@ -236,7 +273,15 @@ class SegMapRenderer(RendererInterface):
                         # in the instance case the resulting ids are directly used
                         if current_attribute == "instance":
                             there_was_an_instance_rendering = True
-                            resulting_map = segmap
+
+                            # fix inconsistent to 3d
+                            if self._convert_to_npz:
+                                # go through instance mapping
+                                for old_label, new_label in self.instance_mapping.values():
+                                    mask = segmap == old_label + 1
+                                    resulting_map[mask] = new_label + 1
+                            else:
+                                resulting_map = segmap
                             was_used = True
                             # a non default value was also used
                             non_default_value_was_used = True
@@ -262,7 +307,7 @@ class SegMapRenderer(RendererInterface):
                             for object_id in used_object_ids:
                                 is_default_value = False
                                 # get the corresponding object via the id
-                                current_obj = used_objects[object_id]
+                                current_obj = used_uids[object_id]
                                 # if the current obj has a attribute with that name -> get it
                                 if hasattr(current_obj, used_attribute):
                                     used_value = getattr(current_obj, used_attribute)
@@ -274,6 +319,8 @@ class SegMapRenderer(RendererInterface):
                                         used_value = current_obj.name
                                         if "." in used_value:
                                             used_value = used_value[:used_value.rfind(".")]
+                                elif current_attribute in current_obj:
+                                    used_value = current_obj[current_attribute]
                                 elif default_value_set:
                                     # if none of the above applies use the default value
                                     used_value = default_value
@@ -306,6 +353,12 @@ class SegMapRenderer(RendererInterface):
                                                     "for: {}".format(current_attribute))
                                 last_state_save_in_csv = save_in_csv
                                 if save_in_csv:
+                                    if self._convert_to_npz:
+                                        for old_label, new_label in self.instance_mapping.values():
+                                            if old_label + 1 == object_id:
+                                                object_id = new_label + 1
+                                                break
+
                                     if object_id in save_in_csv_attributes:
                                         save_in_csv_attributes[object_id][used_attribute] = used_value
                                     else:
@@ -314,13 +367,19 @@ class SegMapRenderer(RendererInterface):
                             used_channels.append(org_attribute)
                             combined_result_map.append(resulting_map)
 
-                    fname = final_segmentation_file_path + "%04d" % frame
+                    if self._convert_to_npz:
+                        frame_name = self.frame_mapping[frame]
+                        parts = frame_name.split("_")
+                        fname = os.path.join(self._determine_output_dir(), f"{parts[0]}_segmap{parts[1]}_{parts[2]}.npz")
+                    else:
+                        fname = final_segmentation_file_path + "%04d" % frame
                     # combine all resulting images to one image
-                    resulting_map = np.stack(combined_result_map, axis=2)
+                    resulting_map = np.stack(combined_result_map, axis=2).astype(optimal_dtype)
                     # remove the unneeded third dimension
                     if resulting_map.shape[2] == 1:
                         resulting_map = resulting_map[:, :, 0]
-                    np.save(fname, resulting_map)
+                    np.savez_compressed(fname, data=resulting_map)
+                    del resulting_map, segmap, segmentation,
             if not there_was_an_instance_rendering:
                 if len(list_of_used_attributes) > 0:
                     raise Exception("There were attributes specified in the may_by, which could not be saved as "
@@ -331,7 +390,8 @@ class SegMapRenderer(RendererInterface):
                 save_in_csv_attributes = {}
 
             # write color mappings to file
-            if save_in_csv_attributes and not self._avoid_rendering:
+            print("SegMap: Save mapping file.")
+            if save_in_csv_attributes and (not self._avoid_rendering or self._convert_to_npz):
                 csv_file_path = os.path.join(self._determine_output_dir(),
                                              self.config.get_string("segcolormap_output_file_prefix",
                                                                     "class_inst_col_map") + ".csv")

@@ -14,6 +14,7 @@ id,name
 3,wine cabinet
 1,wallinner
 3,sideboard / side cabinet / console table
+3,sideboard / side cabinet / console
 7,dressing table
 17,wardrobe
 35,ceiling lamp
@@ -60,3 +61,16 @@ id,name
 4,bed frame
 1,customizedfeaturewall
 1,baseboard
+2,slabbottom
+5,lounge chair / book-chair / computer chair
+7,tea table
+6,three-seat / multi-person sofa
+4,double bed
+3,wine cooler
+6,two-seat sofa
+38,lightband
+38,cabinet/lightband
+38,customized
+38,object
+1,extrusioncustomizedbackgroundwall
+22,extrusioncustomizedceilingmodel

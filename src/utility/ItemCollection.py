@@ -1,7 +1,11 @@
+from pathlib import Path
+
 from src.utility.Config import Config
 from src.utility.Utility import Utility
 import json
 from copy import deepcopy
+import numpy as np
+
 
 class ItemCollection:
     """ Manages the reading and creation of multiple items (like light sources or cam poses) from config or file. """
@@ -25,8 +29,12 @@ class ItemCollection:
         # Calc the total number of arguments necessary per line (used for validating the file)
         number_of_arguments = sum([self._length_of_parameter(parameter_name, number_of_arguments_per_parameter) for parameter_name in file_format])
 
+        if Path(path).suffix == ".npy":
+            collected_arguments = [self._collect_arguments_from_npy_file(path, file_format, number_of_arguments)]
+        else:
+            collected_arguments = self._collect_arguments_from_file(path, file_format, number_of_arguments)
         # Read in file and split lines up into arguments
-        for arguments in self._collect_arguments_from_file(path, file_format, number_of_arguments):
+        for arguments in collected_arguments:
             # Parse parameters from arguments and add new item
             self.add_item(self._parse_arguments_from_file(arguments, file_format, number_of_arguments_per_parameter))
 
@@ -142,5 +150,37 @@ class ItemCollection:
 
                     # Parse arguments in line using json. (In this way "test" will be mapped to a string, while 42 will be mapped to an integer)
                     arguments.append([json.loads(x) for x in line_args])
+
+        return arguments
+
+    def _collect_arguments_from_npy_file(self, path, file_format, number_of_arguments):
+        """ Reads in all lines of the given file and returns them as a list of lists of arguments
+
+        This method also checks is the lines match the configured file format.
+
+        :param path: The path of the file.
+        :param file_format: Specifies how the arguments should be mapped to parameters.
+        :param number_of_arguments: The total number of arguments required per line.
+        :return: A list of lists of arguments
+        """
+        arguments = []
+        if path != "":
+            data = np.load(Utility.resolve_path(path))
+            data = json.loads(data.item())[0]
+            for element in file_format:
+                if element == "cam2world_matrix":
+                    element = "matrix"
+                    argument = data[element]
+                    items = []
+                    for sublist in argument:
+                        for item in sublist:
+                            items.append(item)
+
+                    arguments.extend(items)
+                else:
+                    argument = data[element]
+                    if isinstance(argument, int):
+                        argument = [argument]
+                    arguments.extend(argument)
 
         return arguments
