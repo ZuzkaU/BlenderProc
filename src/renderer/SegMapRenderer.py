@@ -96,7 +96,11 @@ class SegMapRenderer(RendererInterface):
         self._convert_to_npz = config.get_bool("convert_to_npz", True)
 
         if self._convert_to_npz:
-            self.in_dir = self.config.get_string("in_dir")
+            from src.utility.Config import NotFoundError
+            try:
+                self.in_dir = self.config.get_string("in_dir")
+            except NotFoundError:
+                return
             # load frame mapping
             self.frame_mapping = {}
             with open(Path(self.in_dir) / "frame_names.txt") as f:
