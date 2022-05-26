@@ -19,8 +19,9 @@ mapping_file = bproc.utility.resolve_resource(os.path.join("front_3D", "3D_front
 mapping = bproc.utility.LabelIdMapping.from_csv(mapping_file)
 
 # set the light bounces
-bproc.renderer.set_light_bounces(diffuse_bounces=200, glossy_bounces=200, max_bounces=200,
-                                  transmission_bounces=200, transparent_max_bounces=200)
+bproc.renderer.set_light_bounces(diffuse_bounces=50, glossy_bounces=50, max_bounces=50,
+                                  transmission_bounces=50, transparent_max_bounces=50)
+bproc.renderer.set_max_amount_of_samples(512)
 
 # load the front 3D objects
 loaded_objects = bproc.loader.load_front3d(
@@ -57,17 +58,53 @@ def get_coords_dummy():
 	rotation = [1.3, 0, 2]
 	return location, rotation
 
+def get_coords_fixed(f):
+	data = np.load(f)
+	print(data["room_id"])
+	print(data["intrinsic"])
+	print(data["fov_y"])
+	print(data["fov_x"])
+	print(data["camera2world"])
+	print(data["blender_rotation_euler"])
+	print(data["blender_matrix"])
+	print(data["blender_location"])
+	print("_______________________________________________________________________")
+	print("_______________________________________________________________________")
+	print(bproc.math.build_transformation_mat(data["blender_location"], data["blender_rotation_euler"]))
+	print("vs...")
+	print(data["camera2world"])
+	return data["camera2world"]
+
 def add_view(location, rotation):
 	cam2world_matrix = bproc.math.build_transformation_mat(location, rotation)
 	bproc.camera.add_camera_pose(cam2world_matrix)
 
+def get_pos(f):
+	data = np.load(f)
+	return data["blender_location"], data["blender_rotation_euler"], data["intrinsic"]
+
+for i in range(9):
+	loc, r, K = get_pos("../panoptic-reconstruction/data/front3d/359821fc-7594-4482-91c6-51a89cefe2b6/campose_000" + str(i+1) + ".npz")
+	bproc.camera.set_intrinsics_from_K_matrix(K, 320, 240)
+	for j in range(1):
+		rot = np.random.uniform(0, np.pi * 2)
+		rotation  = r
+		cam2world_matrix = bproc.math.build_transformation_mat(loc, rotation)
+		bproc.camera.add_camera_pose(cam2world_matrix)
+
 location, rotation = get_coords_dummy()
-add_view(location, rotation)
+#add_view(location, rotation)
+
+#add_view(np.array([2.3,2.3,1.9]), [1.25, 0, 0])
+#add_view(np.array([2.1,2.3,1.8]), [1.28, 0, 4])
 
 # Also render normals
 # bproc.renderer.enable_normals_output()
 
+print("_________________START RENDER_______________")
+
 # render the whole pipeline
+bproc.renderer.set_output_format("PNG")
 data = bproc.renderer.render()
 # data.update(bproc.renderer.render_segmap(map_by="class"))
 
