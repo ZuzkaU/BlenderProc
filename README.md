@@ -1,3 +1,14 @@
+This fork is used to generate data for [extended Panoptic Reconstruction](https://github.com/jdgalviss/panoptic-reconstruction).
+
+Usage: First, install blenderproc as described below. Then, run
+```python
+blenderproc run blenderproc run own/run.py <path_to_3D-FRONT> <path_to_3D-FUTURE-model> <path_to_Panoptic-3D-front> <output_dir>
+source vis_all.sh <output_dir>
+```
+
+Work still in progress.
+
+
 # BlenderProc2
 
 [![Documentation](https://img.shields.io/badge/documentation-passing-brightgreen.svg)](https://dlr-rm.github.io/BlenderProc/)
