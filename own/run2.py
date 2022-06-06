@@ -2,53 +2,16 @@ import blenderproc as bproc
 import argparse
 import os
 import numpy as np
-from mathutils import Euler
 
 MAX_SCENES = 1
-MAX_IN_SCENE = 3
-ADDITIONAL_CAMERA_POSITIONS = 3
+MAX_IN_SCENE = 10
+ADDITIONAL_CAMERA_POSITIONS = 0
 EXCLUDED_IDS = [95,93,49,21,24,79,31,39,60,38,98,58,44,7,40,63]
 EXCLUDED_LABELS = ['wallouter','wallbottom','walltop','pocket','slabside','slabbottom',
 				   'slabtop','front','back','baseboard','door','window','baywindow',
 				   'hole','wallinner','beam']
 EXCLUDED_LABELS = [] # can this be the problem that it doesn't look correctly?
 #TODO: how about labels newly added from the previous version?
-
-def get_forward(rotation_euler):
-	r = np.array(Euler(rotation).to_matrix())
-	forward = r @ [0, 0, -1]
-	return forward
-
-
-proximity_checks = {"min": 0.5, "avg": {"min": 2.0, "max": 4.0}, "no_background": True}
-def sample_camera_pose(initial_location, initial_rotation, bvh_tree, num_tries):
-	for i in range(num_tries):
-		# assume that the objects have an average distance 2.0 from camera
-		poi = initial_location + 2 * get_forward(initial_rotation) + np.random.normal([0, 0, 0], 0.3)
-		#return poi, initial_rotation
-		random_direction = np.random.rand(3)
-		random_direction /= np.linalg.norm(random_direction)
-		random_direction = -2 * get_forward(initial_rotation) + np.random.uniform([-0.5, -0.5, -0.5], [0.5, 0.5, 0.5])
-		# + -2 * get_forward(initial_rotation))
-		#random_direction = random_direction / (0.5 * np.linalg.norm(v))
-		location = poi + random_direction #TODO: random location in a circle
-		#location = initial_location + np.random.uniform([-0.5, -0.5, -0.5], [0.5, 0.5, 0.5])
-		
-		rotation_matrix = bproc.camera.rotation_from_forward_vec(poi - location)
-		return location, rotation_matrix
-		cam2world_matrix = bproc.math.build_transformation_mat(location, rotation_matrix)
-		if bproc.camera.scene_coverage_score(cam2world_matrix) > 0.4 and bproc.camera.perform_obstacle_in_view_check(cam2world_matrix, proximity_checks, bvh_tree):
-			return location, rotation
-	return None
-
-def add_pose_and_write(location, rotation, output_file):
-	cam2world_matrix = bproc.math.build_transformation_mat(location, rotation)
-	bproc.camera.add_camera_pose(cam2world_matrix)
-	if not os.path.exists(os.path.dirname(output_file)):
-		os.makedirs(os.path.dirname(output_file))
-	with open(output_file, 'w') as f:
-		f.write(f"location:\n{location}\nrotation:\n{rotation}")
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument("front", help="Path to the 3D front file")
@@ -105,15 +68,16 @@ for scene in scenes:
 		output_dir = os.path.join(args.output_dir, scene.split('.')[0], "view" + view_num)
 		data = np.load(view_path)
 		bproc.camera.set_intrinsics_from_K_matrix(data["intrinsic"], 320, 240) # TODO: are all intrinsic matrices the same? -> set after init
-		#bproc.renderer.enable_depth_output(activate_antialiasing=False, output_dir=output_dir)
+		bproc.renderer.enable_depth_output(activate_antialiasing=False, output_dir=output_dir)
 		
-		add_pose_and_write(data["blender_location"], data["blender_rotation_euler"], os.path.join(output_dir, 'campose_0000.txt'))
+		cam2world_matrix = bproc.math.build_transformation_mat(data["blender_location"], data["blender_rotation_euler"])
+		bproc.camera.add_camera_pose(cam2world_matrix)
 		
 		for i in range(ADDITIONAL_CAMERA_POSITIONS):
 			location = data["blender_location"] + np.random.uniform([-0.5, -0.5, -0.5], [0.5, 0.5, 0.5])
 			rotation = data["blender_rotation_euler"] + np.random.uniform([-0.1, 0, -0.2], [0.1, 0, 0.2])
-			location, rotation = sample_camera_pose(data["blender_location"], data["blender_rotation_euler"], None, 1)
-			add_pose_and_write(location, rotation, os.path.join(output_dir, 'campose_' + str(i + 1).zfill(4) +'.txt'))
+			cam2world_matrix = bproc.math.build_transformation_mat(location, rotation)
+			bproc.camera.add_camera_pose(cam2world_matrix)
 			continue
 			height = np.random.uniform(1.4, 1.8)
 			location = point_sampler.sample(height)
@@ -124,9 +88,8 @@ for scene in scenes:
 			# TODO: render RGB image
 
 		####bproc.renderer.set_output_format("PNG")
-		bproc.renderer.render(output_dir=output_dir, return_data=False)
-		# WTF!! when return_data=False, it outputs only rgb, and when return_data=True, it outputs only depth?????
-		
+		#print(f"__________rendering {output_dir}")
+		data = bproc.renderer.render(output_dir=output_dir, return_data=False)
 		####data.update(bproc.renderer.render_segmap(map_by="class"))
 		####bproc.writer.write_hdf5(output_dir, data, append_to_existing_output=True)
 		bproc.utility.reset_keyframes()

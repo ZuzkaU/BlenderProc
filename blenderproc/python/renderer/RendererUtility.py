@@ -178,7 +178,15 @@ def enable_distance_output(activate_antialiasing: bool, output_dir: Optional[str
         antialiasing_distance_max = DefaultConfig.antialiasing_distance_max
 
     if GlobalStorage.is_in_storage("distance_output_is_enabled"):
-        msg = "The distance enable function can not be called twice. Either you called it twice or you used the " \
+        Utility.replace_output_entry({
+            "key": output_key,
+            "path": os.path.join(output_dir, file_prefix) + "%04d" + ".exr",
+            "version": "2.0.0",
+            "trim_redundant_channels": True,
+            "convert_to_depth": convert_to_depth
+        })
+        return None
+        msg  = "The distance enable function can not be called twice. Either you called it twice or you used the " \
               "enable_depth_output with activate_antialiasing=True, which internally calls this function. This is " \
               "currently not supported, but there is an easy way to solve this, you can use the " \
               "bproc.postprocessing.dist2depth and depth2dist function on the output of the renderer and generate " \
@@ -250,13 +258,22 @@ def enable_depth_output(activate_antialiasing: bool, output_dir: Optional[str] =
         output_dir = Utility.get_temporary_directory()
 
     if GlobalStorage.is_in_storage("depth_output_is_enabled"):
-        msg = "The depth enable function can not be called twice. Either you called it twice or you used the " \
-              "enable_distance_output with activate_antialiasing=False, which internally calls this function. This is " \
-              "currently not supported, but there is an easy way to solve this, you can use the " \
-              "bproc.postprocessing.dist2depth and depth2dist function on the output of the renderer and generate " \
-              "the antialiased distance image yourself."
-        raise Exception(msg)
-    GlobalStorage.add("depth_output_is_enabled", True)
+        Utility.replace_output_entry({
+            "key": output_key,
+            "path": os.path.join(output_dir, file_prefix) + "%04d" + ".exr",
+            "version": "2.0.0",
+            "trim_redundant_channels": True,
+            "convert_to_distance": convert_to_distance
+        })
+    else:
+        GlobalStorage.add("depth_output_is_enabled", True)
+        Utility.add_output_entry({
+            "key": output_key,
+            "path": os.path.join(output_dir, file_prefix) + "%04d" + ".exr",
+            "version": "2.0.0",
+            "trim_redundant_channels": True,
+            "convert_to_distance": convert_to_distance
+        })
 
 
     bpy.context.scene.render.use_compositing = True
@@ -278,14 +295,6 @@ def enable_depth_output(activate_antialiasing: bool, output_dir: Optional[str] =
 
     # Feed the Z-Buffer output of the render layer to the input of the file IO layer
     links.new(render_layer_node.outputs["Depth"], output_file.inputs['Image'])
-
-    Utility.add_output_entry({
-        "key": output_key,
-        "path": os.path.join(output_dir, file_prefix) + "%04d" + ".exr",
-        "version": "2.0.0",
-        "trim_redundant_channels": True,
-        "convert_to_distance": convert_to_distance
-    })
 
 
 def enable_normals_output(output_dir: Optional[str] = None, file_prefix: str = "normals_",
@@ -497,7 +506,6 @@ def render(output_dir: Optional[str] = None, file_prefix: str = "rgb_", output_k
         bpy.context.scene.frame_end += 1
     else:
         raise Exception("No camera poses have been registered, therefore nothing can be rendered. A camera pose can be registered via bproc.camera.add_camera_pose().")
-
     return WriterUtility.load_registered_outputs(load_keys, keys_with_alpha_channel) if return_data else {}
 
 

@@ -552,9 +552,10 @@ class Utility:
                 print("Warning! Detected output entries with duplicate keys and paths")
                 return True
             if output["key"] == _output["key"] or output["path"] == _output["path"]:
-                raise Exception("Can not have two output entries with the same key/path but not same path/key." +
+                print("Warning! Detected output entries with the same key/path but not same path/key." +
                                 "Original entry's data: key:{} path:{}, Entry to be registered: key:{} path:{}"
                                 .format(_output["key"], _output["path"], output["key"], output["path"]))
+                return True
 
         return False
 
