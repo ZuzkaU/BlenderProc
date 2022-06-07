@@ -15,3 +15,4 @@ resources/scenenet/SceneNetData
 docs/build/
 !docs/source/index.rst
 docs/source/*rst
+*.log

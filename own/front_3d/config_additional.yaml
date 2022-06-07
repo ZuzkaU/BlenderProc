@@ -1,0 +1,97 @@
+# Args: <PATH_TO_3D-Front_json> <PATH_TO_3D-Future-model> <PATH_TO_original-campose> <output>
+{
+    "version": 3,
+    "delete_temporary_files_afterwards": False,
+    "setup": {
+        "blender_install_path": "/home/<env:USER>/blender/",
+        "pip": [
+            "h5py",
+        ]
+    },
+    "modules": [
+    {
+        "module": "main.Initializer",
+        "config":{
+            "global": {
+                "output_dir": "<args:3>",
+                "temp_dir": "<args:3>",
+                "resolution_x": 320,
+                "resolution_y": 240,
+                "fov": 1.0471975511,
+            }
+        }
+    },
+    {
+        "module": "loader.Front3DLoader",
+        "config": {
+            "json_path": "<args:0>",
+            "3D_future_model_path": "<args:1>",
+            "ceiling_light_strength": 1.0,
+            "redraw_walls": True,
+            "replace_ceiling": True,
+            "save_ceiling": False,
+            "save_walls": False,
+            "save_floor": False,
+            "mapping_file": "own/3D_front_mapping_new.csv",
+            "nyu_mapping_file": "own/3D_front_nyu_mapping_new.csv",
+        }
+    },
+    {
+        "module": "manipulators.WorldManipulator",
+        "config": {
+            "cf_set_world_category_id": 0  # this sets the worlds background category id to 0
+        }
+    },
+    {
+        "module": "camera.Front3DAdditionalPoseSampler",
+        "config": {
+            "check_pose_novelty": True,
+            "min_diff_rot": 0.25,
+            "min_diff_translation": 0.5,
+            "cam_poses": [
+            {
+                "original_campose": "<args:2>",
+                "number_of_samples": 50,
+                "min_interest_score": 0.01,
+                "max_tries": 50000,
+                "proximity_checks": {
+                    "min": 0.1,
+                    "max": 10.0
+                },
+                "sqrt_number_of_rays": 10,
+                "center_region_x_percentage": 0.5,
+                "center_region_y_percentage": 0.5,
+                "location": {
+                    "provider":"sampler.Uniform3d",
+                    "max":[0, 0, 2.0],
+                    "min":[0, 0, 0.1]
+                },
+                "rotation": {
+                    "value": {
+                        "provider":"sampler.Uniform3d",
+                        "max":[2.35619449, 0, 6.283185307],
+                        "min":[0.785398163, 0, 0]
+                    }
+                }
+            }
+            ]
+        }
+    },
+    {
+        "module": "writer.CameraStateWriter",
+        "config": {
+            "attributes_to_write": ["matrix", "location", "rotation_euler", "fov_x", "fov_y", "customprop_room_id"]
+        }
+    },
+    {
+      "module": "renderer.RgbRenderer",
+      "config": {
+        "output_key": "colors",
+        "samples": 256,
+        "render_normals": False,
+        "render_distance": False,
+        "use_mist_distance": False,
+      }
+    }
+  ]
+}
