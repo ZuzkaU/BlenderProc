@@ -55,7 +55,7 @@
             "cam_poses": [
             {
                 "original_campose": "<args:2>",
-                "number_of_samples": 1,
+                "number_of_samples": 20,
                 "min_interest_score": 0.15,
                 "max_tries": 50000,
                 "proximity_checks": {
@@ -95,7 +95,7 @@
       "module": "renderer.RgbRenderer",
       "config": {
         "output_key": "colors",
-        "samples": 256,
+        "samples": 64,
         "render_normals": False,
         "render_distance": False,
         "use_mist_distance": False,

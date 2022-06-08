@@ -10,6 +10,7 @@ from src.utility.Utility import Utility
 from src.camera.Front3DCameraSampler import Front3DCameraSampler
 
 import bpy
+import os
 
 from src.camera.CameraSampler import CameraSampler
 from src.utility.BlenderUtility import get_bounds, hide_all_geometry, show_collection, world_to_camera
@@ -37,43 +38,42 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         """
         computes which pixels in the view of sampled_matrix are also visible in original_matrix
         """
-        # test if the mask is correct
-        original_matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0019.npz')['blender_matrix'])
-        sampled_matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0020.npz')['blender_matrix'])
-    
         frame = cam.view_frame(scene=bpy.context.scene)
         original_frame = [original_matrix @ v for v in frame]
         sampled_frame = [sampled_matrix @ v for v in frame]
         position = sampled_matrix.to_translation()
         
-        vec_x = sampled_frame[1] - sampled_frame[0]
-        vec_y = sampled_frame[3] - sampled_frame[0]
+        vec_y = sampled_frame[1] - sampled_frame[0]
+        vec_x = sampled_frame[3] - sampled_frame[0]
 
-        mask = np.zeros((240, 320), dtype=np.dtype('uint8'))
+        x_dim, y_dim = 320, 240
+        mask = np.zeros((y_dim, x_dim), dtype=np.dtype('uint8'))
         masked_pixels, visible_pixels, nohit = 0, 0, 0
-        for x in range(0, 320):
-            for y in range(0, 240):
+        for x in random.sample(range(x_dim), k=x_dim):
+            for y in random.sample(range(y_dim), k=y_dim):
                 # Compute current point on plane
-                end = sampled_frame[0] + vec_x * x / float(320 - 1) \
-                      + vec_y * y / float(240 - 1)
+                end = sampled_frame[0] + vec_x * x / float(x_dim - 1) \
+                      + vec_y * y / float(y_dim - 1)
                 # Send ray from the camera position through the current point on the plane
                 hit, location, _, _, hit_object, _ = bpy.context.scene.ray_cast(bpy.context.view_layer, position, end - position)
 
                 if not hit:
                     nohit += 1
                 if hit and self.location_inside_frame(location, frame, original_matrix):
-                    mask[y,x] = 255
+                    mask[y,x_dim-1-x] = 255
                     visible_pixels += 1
                 else:
-                    mask[y,x] = 0
+                    mask[y,x_dim-1-x] = 0
                     masked_pixels += 1
-                # Possible optimization checks (if the pixels are sampled randomly)
-                # if masked_pixels >= 320*240*0.8:
-                #     print("too many masked pixels")
-                #     return None
-                # if visible_pixels == 0 and masked_pixels > 1000:
-                #     print("too little visible pixels")
-                #     return None
+                if masked_pixels >= x_dim*y_dim*0.4:
+                    print("too many masked pixels")
+                    return None
+                if visible_pixels == 0 and masked_pixels > 1000:
+                    print("too little visible pixels")
+                    return None
+                if visible_pixels + masked_pixels > 1000 and visible_pixels / (visible_pixels + masked_pixels) < 0.5:
+                    print("too low ratio")
+                    return None
         print(f"masked pixels: {masked_pixels}, visible: {visible_pixels}, nohit: {nohit}")
         # https://stackoverflow.com/questions/32159076/python-pil-bitmap-png-from-array-with-mode-1
         # Using mode 'L' instead of '1'
@@ -85,13 +85,17 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         """
         frame = [cam2world_matrix @ v for v in frame]
         position = cam2world_matrix.to_translation()
-        endings = [position + 10*(f-position) for f in frame]
+        safe_distance = 10
+        # make a pyramid-polygon with apex at the camera and base far enough in the direction of frame
+        endings = [position + safe_distance*(f-position) for f in frame]
         
-        # Inefficient implementation to see if it works correctly
+        # Not very efficient implementation to see if it works correctly
+        # Maybe try this with linear programming, multiple points at a time, save the camera pyramid...?
+        # https://stackoverflow.com/questions/16750618/whats-an-efficient-way-to-find-if-a-point-lies-in-the-convex-hull-of-a-point-cl
         hull = ConvexHull([position] + endings)
         new_hull = ConvexHull([position] + endings + [location])
         inside = np.array_equal(new_hull.vertices, hull.vertices)
-        return np.array_equal(new_hull.vertices, hull.vertices)    
+        return np.array_equal(new_hull.vertices, hull.vertices)
 
     def sample_and_validate_cam_pose(self, cam, cam_ob, config):
         """ Samples a new camera pose, sets the parameters of the given camera object accordingly and validates it.
@@ -125,9 +129,9 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         # (the only requirement for pose validity)
         mask = self.compute_mask(cam, Matrix(self.original_campose["blender_matrix"]), cam2world_matrix)
         if mask:
-            name = f"output-mask/{self.img_num}.png"
-            print(f"saving mask as {name}")
-            mask.save(name)
+            path = os.path.join(config.get_string("output_dir"), f"mask_{str(self.img_num).zfill(4)}.png")
+            print(f"saving mask as {path}")
+            mask.save(path)
             self.img_num += 1
             cam_ob.matrix_world = cam2world_matrix
             cam_ob["room_id"] = room_index
@@ -189,6 +193,9 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         The try-sample cycle is again the same as in Front3DCameraSampler.
         """
         
+        # self._set_cam_intrinsics(cam, config)
+        # (setting in sample_and_validate_cam_pose)
+
         self.original_campose = np.load(config.get_string("original_campose", "test/campose_0001.npz"))
         room_id = self.original_campose["room_id"]
         for room_name, (room_obj, _, rid) in self.rooms.items():
@@ -223,9 +230,10 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
                 # Sample a new cam pose and check if its valid
                 if self.sample_and_validate_cam_pose(cam, cam_ob, config):
                     # Store new cam pose as next frame
+                    # (cam_ob.matrix_world set in sample_and_validate_cam_pose)
                     frame_id = bpy.context.scene.frame_end
                     self._insert_key_frames(cam, cam_ob, frame_id)
-                    self.insert_geometry_key_frame(room_obj, frame_id)
+                    #self.insert_geometry_key_frame(room_obj, frame_id)
                     bpy.context.scene.frame_end = frame_id + 1
                     break
 
