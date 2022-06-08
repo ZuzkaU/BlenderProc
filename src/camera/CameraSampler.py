@@ -261,10 +261,11 @@ class CameraSampler(CameraInterface):
         :return: True, if the pose is valid
         """
         if not self._perform_obstacle_in_view_check(cam, cam2world_matrix):
+            print("Obstacle in view")
             return False
 
         if self._is_ceiling_visible(cam, cam2world_matrix):
-            # print("Ceiling visible")
+            print("Ceiling visible")
             return False
 
         scene_coverage_score, score, _, coverage_info = self._scene_coverage_score(cam, cam2world_matrix)
@@ -274,18 +275,18 @@ class CameraSampler(CameraInterface):
         line += [f"Variance: {scene_variance:4.3f}", "\tVariance: ", " | ".join(["{0}: {1}".format(k, v) for k, v in variance_info.items()])]
         if scene_coverage_score < self.min_interest_score or scene_variance < self.min_scene_variance:
             # print(f"\t\t", " ".join(line))
-            # pprint("\t", dict(coverage_info), indent=4)
+            print("\t", dict(coverage_info), indent=4)
             return False
 
 
         objects_are_visible, object_visibilities = self._check_visible_overlap(cam, cam2world_matrix)
         if not objects_are_visible:
-            # print("Object overlap too small")
+            print("Object overlap too small")
             return False
         line.append("\tVisibility: " + " | ".join([f"{k}-{v[0]:4.3f}/{v[1]:4.3f}" for k, v in object_visibilities.items()]))
 
         if self.check_pose_novelty and (not self._check_novel_pose(cam2world_matrix)):
-            # print("not novel")
+            print("not novel")
             return False
 
         if self._above_objects:
@@ -422,10 +423,9 @@ class CameraSampler(CameraInterface):
                 # Check if something was hit and how far it is away
                 if dist is not None:
                     if "min" in self.proximity_checks and dist <= self.proximity_checks["min"]:
-                        # print(f"sample too close {dist}")
                         return False
                     if "max" in self.proximity_checks and dist >= self.proximity_checks["max"]:
-                        # print(f"sample too far {dist}")
+                        print(f"sample too far {dist}")
                         return False
                     if "avg" in self.proximity_checks:
                         sum += dist
@@ -774,22 +774,6 @@ class CameraSampler(CameraInterface):
         :param cam2world_matrix: camera pose to check
         """
 
-        # def _variance_constraint(array, new_val, old_var, diff_threshold, mode):
-        #     array.append(new_val)
-        #     var = np.var(array, axis=0)
-        #
-        #     if np.any(var < 0.5 * old_var):
-        #         array.pop()
-        #         return False
-        #
-        #     diff = ((var - old_var) / old_var) * 100.0
-        #     print("Variance difference {}: {}".format(mode, diff))
-        #     if any(diff < diff_threshold):  # Check if the variance increased sufficiently
-        #         array.pop()
-        #         return False
-        #
-        #     return True
-
         translation = cam2world_matrix.to_translation()
         rotation    = cam2world_matrix.col[2].normalized()
 
@@ -808,19 +792,7 @@ class CameraSampler(CameraInterface):
                             # print(f"Rotation difference too small {diff_dot}")
                             return False
 
-            # if self.check_pose_novelty_rot:
-            #     if not _variance_constraint(self.rotations, rotation, self.var_rot, self.min_var_diff_rot, "rotation"):
-            #         return False
-            #
-            # if self.check_pose_novelty_translation:
-            #     if not _variance_constraint(self.translations, translation, self.var_translation,
-            #                                 self.min_var_diff_translation, "translation"):
-            #         return False
-
         self.translations.append(translation)
         self.rotations.append(rotation)
-
-        # self.var_rot = np.var(self.rotations, axis=0)
-        # self.var_translation = np.var(self.translations, axis=0)
 
         return True 

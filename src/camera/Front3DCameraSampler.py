@@ -60,7 +60,10 @@ class Front3DCameraSampler(CameraSampler):
         # self.used_floors = [obj for obj in floor_objs if floor_obj_counters[obj.name] > amount_of_objects_needed_per_room]
         amount_of_objects_needed_per_room = self.config.get_int("amount_of_objects_needed_per_room", 1)
         self.rooms = {}
-        for room_obj in bpy.context.scene.objects:
+        for i, room_obj in enumerate(bpy.context.scene.objects):
+            print(f"_____room {i}, {room_obj.name}")
+            if "room_id" in room_obj:
+                print(f"_________________room id: {room_obj['room_id']}")
             # Check if object is from type room and has bbox
             if "is_room" in room_obj and room_obj["is_room"] == 1:
                 # count objects

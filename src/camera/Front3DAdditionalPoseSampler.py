@@ -12,6 +12,10 @@ import bpy
 from src.camera.CameraSampler import CameraSampler
 from src.utility.BlenderUtility import get_bounds, hide_all_geometry, show_collection, world_to_camera
 
+from shapely.geometry import Polygon, Point
+from scipy.spatial import ConvexHull, Delaunay
+from PIL import Image
+
 
 class Front3DAdditionalPoseSampler(CameraSampler):
     """
@@ -22,6 +26,7 @@ class Front3DAdditionalPoseSampler(CameraSampler):
     def __init__(self, config):
         CameraSampler.__init__(self, config)
         self.used_floors = []
+        self.img_num = 0
 
 
     def run(self):
@@ -63,6 +68,75 @@ class Front3DAdditionalPoseSampler(CameraSampler):
 
         print(f"Found {len(self.rooms)} rooms")
         super().run()
+    
+    def compute_mask(self, cam, original_matrix, sampled_matrix):
+        original_matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0019.npz')['camera2world'])
+        sampled_matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0020.npz')['camera2world'])
+    
+        frame = cam.view_frame(scene=bpy.context.scene)
+        original_frame = [original_matrix @ v for v in frame]
+        sampled_frame = [sampled_matrix @ v for v in frame]
+        position = sampled_matrix.to_translation()
+        
+        vec_x = sampled_frame[1] - sampled_frame[0]
+        vec_y = sampled_frame[3] - sampled_frame[0]
+
+        mask = np.zeros((320, 240))
+        masked_pixels, visible_pixels, nohit = 0, 0, 0
+        print(f"computing mask {random.randint(0,9)}")
+        x_range = list(range(0, 320))
+        random.shuffle(x_range)
+        y_range = list(range(0, 240))
+        random.shuffle(y_range)
+        for x in x_range:
+            for y in y_range:
+                # Compute current point on plane
+                end = sampled_frame[0] + vec_x * x / float(320 - 1) \
+                      + vec_y * y / float(240 - 1)
+                # Send ray from the camera position through the current point on the plane
+                hit, location, _, _, hit_object, _ = bpy.context.scene.ray_cast(bpy.context.view_layer, position, end - position)
+
+                #print(f"hit? {hit}")
+                if not hit:
+                    nohit += 1
+                if hit and self.location_inside_frame(location, frame, original_matrix):
+                    mask[x,y] = 0
+                    visible_pixels += 1
+                else:
+                    mask[x,y] = 1
+                    masked_pixels += 1
+                #if masked_pixels >= 320*240*0.8:
+                #    print("too many masked pixels")
+                #    return None
+                #if visible_pixels == 0 and masked_pixels > 1000:
+                #    print("too little visible pixels")
+                #    return None
+        print(f"masked pixels: {masked_pixels}, visible: {visible_pixels}, nohit: {nohit}")
+        if visible_pixels == 0:
+            raise Exception("these matrices should have common pixels")
+        return Image.fromarray(mask, mode='1')
+    
+    def location_inside_frame(self, location, frame, cam2world_matrix):
+        frame = [cam2world_matrix @ v for v in frame]
+        position = cam2world_matrix.to_translation()
+        endings = [position + 10*(f-position) for f in frame]
+        
+        hull = ConvexHull([position] + endings)
+        new_hull = ConvexHull([position] + endings + [location])
+        inside = np.array_equal(new_hull.vertices, hull.vertices)
+        if inside:
+            print(f"inside? {inside}")
+        return np.array_equal(new_hull.vertices, hull.vertices)
+        
+        #print(f"location: {location}")
+        #print(f"(original) camera position: {position}")
+        #print(f"frame: {frame}")
+        #print(f"endings: {endings}")
+        
+        #polygon = Polygon([position] + endings)
+        #point = Point(location)
+        #return polygon.contains(point)
+    
 
     def sample_and_validate_cam_pose(self, cam, cam_ob, config):
         """ Samples a new camera pose, sets the parameters of the given camera object accordingly and validates it.
@@ -89,6 +163,18 @@ class Front3DAdditionalPoseSampler(CameraSampler):
         cam2world_matrix.translation[0] = random.uniform(min_corner[0], max_corner[0])
         cam2world_matrix.translation[1] = random.uniform(min_corner[1], max_corner[1])
         cam2world_matrix.translation[2] += floor_obj.location[2]
+
+
+        mask = self.compute_mask(cam, Matrix(self.original_campose["camera2world"]), cam2world_matrix)
+        if mask:
+            print("saving mask")
+            mask.save(f"output-mask/{self.img_num}", format='png')
+            self.img_num += 1
+            cam_ob.matrix_world = cam2world_matrix
+            cam_ob["room_id"] = room_index
+            return True
+        else:
+            return False
 
         # Check if sampled pose is valid
         if self._is_pose_valid(floor_obj, cam, cam_ob, cam2world_matrix):
@@ -117,7 +203,11 @@ class Front3DAdditionalPoseSampler(CameraSampler):
         # Get position of the corners of the near plane
         frame = cam.view_frame(scene=bpy.context.scene)
         # Bring to world space
+        print("_______frame:")
+        print(frame)
         frame = [cam2world_matrix @ v for v in frame]
+        print("_______world:")
+        print(frame)
 
         # Compute vectors along both sides of the plane
         vec_x = frame[1] - frame[0]
@@ -248,10 +338,11 @@ class Front3DAdditionalPoseSampler(CameraSampler):
         print("Hide geometry")
         hide_all_geometry()
         print("display single room")
-        for obj in room_obj.children:
-            if obj.name in visibilities.keys():
-                obj.hide_viewport = False
-                obj.hide_render = False
+        show_collection(room_obj)
+        #for obj in room_obj.children:
+        #    if obj.name in visibilities.keys():
+        #        obj.hide_viewport = False
+        #        obj.hide_render = False
         bpy.context.view_layer.update()
 
         print("start sampling")
