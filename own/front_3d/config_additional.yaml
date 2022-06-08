@@ -55,7 +55,7 @@
             "cam_poses": [
             {
                 "original_campose": "<args:2>",
-                "number_of_samples": 5,
+                "number_of_samples": 1,
                 "min_interest_score": 0.15,
                 "max_tries": 50000,
                 "proximity_checks": {
