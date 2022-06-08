@@ -60,10 +60,7 @@ class Front3DCameraSampler(CameraSampler):
         # self.used_floors = [obj for obj in floor_objs if floor_obj_counters[obj.name] > amount_of_objects_needed_per_room]
         amount_of_objects_needed_per_room = self.config.get_int("amount_of_objects_needed_per_room", 1)
         self.rooms = {}
-        for i, room_obj in enumerate(bpy.context.scene.objects):
-            print(f"_____room {i}, {room_obj.name}")
-            if "room_id" in room_obj:
-                print(f"_________________room id: {room_obj['room_id']}")
+        for room_obj in bpy.context.scene.objects:
             # Check if object is from type room and has bbox
             if "is_room" in room_obj and room_obj["is_room"] == 1:
                 # count objects
@@ -73,21 +70,21 @@ class Front3DCameraSampler(CameraSampler):
                 floors = list(filter(lambda x: x.name.lower().startswith("floor"), room_obj.children))
 
                 if len(floors) == 0:
-                    print(f"Skip {room_obj.name}: 0 floor objects found")
+                    #print(f"Skip {room_obj.name}: 0 floor objects found")
                     continue
 
                 if len(floors) > 1 or len(floors) == 0:
-                    print(f"Skip {room_obj.name}: {len(floors)} floor objects found")
+                    #print(f"Skip {room_obj.name}: {len(floors)} floor objects found")
                     continue
 
                 floor = floors[0]
 
                 if "num_floors" in floor and floor["num_floors"] > 2:
-                    print(f"Skip {room_obj.name}: Too many floors merged ({floor['num_floors']})")
+                    #print(f"Skip {room_obj.name}: Too many floors merged ({floor['num_floors']})")
                     continue
 
                 if num_room_objects < amount_of_objects_needed_per_room:
-                    print(f"Skip {room_obj.name}: Not enough objects in room ({num_room_objects})")
+                    #print(f"Skip {room_obj.name}: Not enough objects in room ({num_room_objects})")
                     continue
 
                 self.rooms[room_obj.name] = room_obj, floor, room_obj["room_id"]
@@ -207,7 +204,7 @@ class Front3DCameraSampler(CameraSampler):
 
                 while tries < self.max_tries:
                     if tries % fraction_tries == 0:
-                        print(f"Performed {tries} tires")
+                        print(f"Performed {tries} tires; obstacles: {self.obstacles}")
                     tries += 1
                     all_tries += 1
                     # Sample a new cam pose and check if its valid
@@ -265,7 +262,7 @@ class Front3DCameraSampler(CameraSampler):
         :return: True, if the pose is valid
         """
         if not self._position_is_above_object(cam2world_matrix.to_translation(), floor_obj):
-            return False
+            pass#return False
 
         return super()._is_pose_valid(cam, cam_ob, cam2world_matrix)
 

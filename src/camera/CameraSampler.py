@@ -135,6 +135,8 @@ class CameraSampler(CameraInterface):
             self.min_diff_translation = sys.float_info.min
 
         self.cam_pose_collection = ItemCollection(self._sample_cam_poses, self.config.get_raw_dict("default_cam_param", {}))
+        
+        self.obstacles = [0, 0, 0]
 
     def run(self):
         """ Sets camera poses. """
@@ -261,9 +263,11 @@ class CameraSampler(CameraInterface):
         :return: True, if the pose is valid
         """
         if not self._perform_obstacle_in_view_check(cam, cam2world_matrix):
-            print("Obstacle in view")
+            #print("Obstacle in view")
+            self.obstacles[0] += 1
             return False
 
+        print("got here")
         if self._is_ceiling_visible(cam, cam2world_matrix):
             print("Ceiling visible")
             return False
@@ -275,13 +279,15 @@ class CameraSampler(CameraInterface):
         line += [f"Variance: {scene_variance:4.3f}", "\tVariance: ", " | ".join(["{0}: {1}".format(k, v) for k, v in variance_info.items()])]
         if scene_coverage_score < self.min_interest_score or scene_variance < self.min_scene_variance:
             # print(f"\t\t", " ".join(line))
-            print("\t", dict(coverage_info), indent=4)
+            #print("\t", dict(coverage_info), indent=4)
+            self.obstacles[1] += 1
             return False
 
 
         objects_are_visible, object_visibilities = self._check_visible_overlap(cam, cam2world_matrix)
         if not objects_are_visible:
-            print("Object overlap too small")
+            #print("Object overlap too small")
+            self.obstacles[2] += 1
             return False
         line.append("\tVisibility: " + " | ".join([f"{k}-{v[0]:4.3f}/{v[1]:4.3f}" for k, v in object_visibilities.items()]))
 
@@ -293,6 +299,7 @@ class CameraSampler(CameraInterface):
             for obj in self._above_objects:
                 if self._position_is_above_object(cam2world_matrix.to_translation(), obj):
                     return True
+            print("not above objects")
             return False
 
         print(" ".join(line))
@@ -301,6 +308,7 @@ class CameraSampler(CameraInterface):
         with open(output_path, "a") as f:
             f.write(" ".join(line) + "\n")
 
+        print("return true")
         return True
 
     def _position_is_above_object(self, position, object):
@@ -425,7 +433,7 @@ class CameraSampler(CameraInterface):
                     if "min" in self.proximity_checks and dist <= self.proximity_checks["min"]:
                         return False
                     if "max" in self.proximity_checks and dist >= self.proximity_checks["max"]:
-                        print(f"sample too far {dist}")
+                        # print(f"sample too far {dist}")
                         return False
                     if "avg" in self.proximity_checks:
                         sum += dist

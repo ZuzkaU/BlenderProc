@@ -5,7 +5,8 @@ from typing import Tuple, Dict
 
 import numpy as np
 import mathutils
-from mathutils import Matrix
+from mathutils import Matrix, Vector, Euler
+from src.utility.Utility import Utility
 
 import bpy
 
@@ -70,8 +71,8 @@ class Front3DAdditionalPoseSampler(CameraSampler):
         super().run()
     
     def compute_mask(self, cam, original_matrix, sampled_matrix):
-        original_matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0019.npz')['camera2world'])
-        sampled_matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0020.npz')['camera2world'])
+        original_matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0019.npz')['blender_matrix'])
+        sampled_matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0020.npz')['blender_matrix'])
     
         frame = cam.view_frame(scene=bpy.context.scene)
         original_frame = [original_matrix @ v for v in frame]
@@ -81,7 +82,7 @@ class Front3DAdditionalPoseSampler(CameraSampler):
         vec_x = sampled_frame[1] - sampled_frame[0]
         vec_y = sampled_frame[3] - sampled_frame[0]
 
-        mask = np.zeros((320, 240))
+        mask = np.zeros((240, 320))
         masked_pixels, visible_pixels, nohit = 0, 0, 0
         print(f"computing mask {random.randint(0,9)}")
         x_range = list(range(0, 320))
@@ -100,10 +101,10 @@ class Front3DAdditionalPoseSampler(CameraSampler):
                 if not hit:
                     nohit += 1
                 if hit and self.location_inside_frame(location, frame, original_matrix):
-                    mask[x,y] = 0
+                    mask[y,x] = 0
                     visible_pixels += 1
                 else:
-                    mask[x,y] = 1
+                    mask[y,x] = 1
                     masked_pixels += 1
                 #if masked_pixels >= 320*240*0.8:
                 #    print("too many masked pixels")
@@ -113,7 +114,7 @@ class Front3DAdditionalPoseSampler(CameraSampler):
                 #    return None
         print(f"masked pixels: {masked_pixels}, visible: {visible_pixels}, nohit: {nohit}")
         if visible_pixels == 0:
-            raise Exception("these matrices should have common pixels")
+            return None
         return Image.fromarray(mask, mode='1')
     
     def location_inside_frame(self, location, frame, cam2world_matrix):
@@ -124,8 +125,6 @@ class Front3DAdditionalPoseSampler(CameraSampler):
         hull = ConvexHull([position] + endings)
         new_hull = ConvexHull([position] + endings + [location])
         inside = np.array_equal(new_hull.vertices, hull.vertices)
-        if inside:
-            print(f"inside? {inside}")
         return np.array_equal(new_hull.vertices, hull.vertices)
         
         #print(f"location: {location}")
@@ -167,14 +166,29 @@ class Front3DAdditionalPoseSampler(CameraSampler):
 
         mask = self.compute_mask(cam, Matrix(self.original_campose["camera2world"]), cam2world_matrix)
         if mask:
-            print("saving mask")
-            mask.save(f"output-mask/{self.img_num}", format='png')
+            name = f"output-mask/{self.img_num}.png"
+            print("saving mask as {name}")
+            mask.save(name)
             self.img_num += 1
             cam_ob.matrix_world = cam2world_matrix
             cam_ob["room_id"] = room_index
             return True
         else:
-            return False
+            matrix = Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0020.npz')['camera2world'])
+            print("___________cam2world")
+            print(matrix)
+            pos = np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0020.npz')['blender_location']
+            rot = np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0020.npz')['blender_rotation_euler']
+            rotation_euler = Utility.transform_point_to_blender_coord_frame(rot, self.source_frame)
+            cam2world_matrix = Matrix.Translation(Vector(pos)) @ Euler(rotation_euler, 'XYZ').to_matrix().to_4x4()
+            print("___________cam2world constructed")
+            print(cam2world_matrix)
+            print("___________blender matrix")
+            print(Matrix(np.load('../../sample/359821fc-7594-4482-91c6-51a89cefe2b6/campose_0020.npz')['blender_matrix']))
+            cam_ob.matrix_world = cam2world_matrix
+            cam_ob["room_id"] = room_index
+            print("setting spoofed matrix, return true")
+            return True
 
         # Check if sampled pose is valid
         if self._is_pose_valid(floor_obj, cam, cam_ob, cam2world_matrix):
@@ -187,7 +201,7 @@ class Front3DAdditionalPoseSampler(CameraSampler):
             return False
     
     def get_obj_visible_from_campose(self, cam, room_obj, campose):
-        matrix = Matrix(campose["camera2world"])
+        matrix = Matrix(campose["blender_matrix"])
         valid, visibilities = self._check_visible_overlap(cam, matrix)
         
         return visibilities
@@ -358,11 +372,13 @@ class Front3DAdditionalPoseSampler(CameraSampler):
                 # Sample a new cam pose and check if its valid
                 if self.sample_and_validate_cam_pose(cam, cam_ob, config):
                     # Store new cam pose as next frame
+                
                     frame_id = bpy.context.scene.frame_end
                     self._insert_key_frames(cam, cam_ob, frame_id)
                     self.insert_geometry_key_frame(room_obj, frame_id)
                     bpy.context.scene.frame_end = frame_id + 1
 
+                    return
                     # if frame_id == 0:
                     # self._visualize_rays(cam, cam_ob.matrix_world, center_only=True)
                     break
