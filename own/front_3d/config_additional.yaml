@@ -1,4 +1,4 @@
-# Args: <PATH_TO_3D-Front_json> <PATH_TO_3D-Future-model> <PATH_TO_original-campose> <output>
+# Args: <PATH_TO_3D-Front_json> <PATH_TO_3D-Future-model> <PATH_TO_scene_dir> <output>
 {
     "version": 3,
     "delete_temporary_files_afterwards": False,
@@ -21,6 +21,11 @@
                 "resolution_x": 320,
                 "resolution_y": 240,
                 "fov": 1.0471975511,
+                "max_bounces": 200,
+                "diffuse_bounces": 200,
+                "glossy_bounces": 200,
+                "transmission_bounces": 200,
+                "transparency_bounces": 200
             }
         }
     },
@@ -49,26 +54,30 @@
     {
         "module": "camera.Front3DAdditionalPoseSampler",
         "config": {
-            "check_pose_novelty": True,
+            "check_pose_novelty": False,
             "min_diff_rot": 0.25,
             "min_diff_translation": 0.5,
             "cam_poses": [
             {
-                "original_campose": "<args:2>",
+                #"original_campose": "<args:2>",
+                "scene_dir": "<args:2>",
                 "number_of_samples": 20,
                 "min_interest_score": 0.15,
-                "max_tries": 50000,
+                "max_tries": 5000,
                 "proximity_checks": {
                     "min": 0.1,
                     "max": 10.0
                 },
-                "min_scene_variance": 0.3,
-                "min_visible_overlap": 0.4,
+                "min_scene_variance": 0.1,
+                "min_visible_overlap": 0.3,
                 "sqrt_number_of_rays": 10,
+                "min_common_pixels": 0.4,
                 "center_region_x_percentage": 0.5,
                 "center_region_y_percentage": 0.5,
                 #"excluded_objects_in_score_check": [95,93,49,21,24,79,31,39,60,38,98,58,44,7,40,63],
                 #"excluded_objects_in_overlap_check": [95,93,49,21,24,79,31,39,60,38,98,58,44,7,40,63],
+                #"excluded_objects_in_score_check": [1, 2, 22, 8, 9, 11, 13, 16, 19, 20, 21, 23, 26, 27, 28, 29, 30, 31, 35, 38, 39, 40],
+                #"excluded_objects_in_overlap_check": [1, 2, 22, 8, 9, 11, 13, 16, 19, 20, 28, 29, 30, 38],
                 "location": {
                     "provider":"sampler.Uniform3d",
                     "max":[0, 0, 2.0],
@@ -96,7 +105,7 @@
       "config": {
         "output_key": "colors",
         "samples": 64,
-        "render_normals": False,
+        "render_normals": True,
         "render_distance": False,
         "use_mist_distance": False,
       }

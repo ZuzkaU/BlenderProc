@@ -42,7 +42,7 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         original_frame = [original_matrix @ v for v in frame]
         sampled_frame = [sampled_matrix @ v for v in frame]
         position = sampled_matrix.to_translation()
-        
+
         vec_y = sampled_frame[1] - sampled_frame[0]
         vec_x = sampled_frame[3] - sampled_frame[0]
 
@@ -59,30 +59,31 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
 
                 if not hit:
                     nohit += 1
-                if hit and self.location_inside_frame(location, frame, original_matrix):
+                if hit and self.location_inside_frame(cam, location, original_matrix):
                     mask[y,x_dim-1-x] = 255
                     visible_pixels += 1
                 else:
                     mask[y,x_dim-1-x] = 0
                     masked_pixels += 1
-                if masked_pixels >= x_dim*y_dim*0.4:
-                    print("too many masked pixels")
+                if masked_pixels >= x_dim*y_dim*0.3:
+                    print(f"too many masked pixels; visible {visible_pixels}, masked {masked_pixels}, nohit {nohit}")
                     return None
                 if visible_pixels == 0 and masked_pixels > 1000:
-                    print("too little visible pixels")
+                    print(f"too little visible pixels; visible {visible_pixels}, masked {masked_pixels}, nohit {nohit}")
                     return None
-                if visible_pixels + masked_pixels > 1000 and visible_pixels / (visible_pixels + masked_pixels) < 0.5:
-                    print("too low ratio")
+                if visible_pixels + masked_pixels > 1000 and visible_pixels / (visible_pixels + masked_pixels) < 0.3:
+                    print(f"too low ratio; visible {visible_pixels}, masked {masked_pixels}, nohit {nohit}")
                     return None
         print(f"masked pixels: {masked_pixels}, visible: {visible_pixels}, nohit: {nohit}")
         # https://stackoverflow.com/questions/32159076/python-pil-bitmap-png-from-array-with-mode-1
         # Using mode 'L' instead of '1'
         return Image.fromarray(mask, mode='L')
     
-    def location_inside_frame(self, location, frame, cam2world_matrix):
+    def location_inside_frame(self, cam, location, cam2world_matrix):
         """
         determines if location is inside camera view given by frame and matrix.
         """
+        frame = cam.view_frame(scene=bpy.context.scene)
         frame = [cam2world_matrix @ v for v in frame]
         position = cam2world_matrix.to_translation()
         safe_distance = 10
@@ -127,17 +128,103 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         # Check if sampled pose is valid: compute_mask should return a mask if 
         # there are enough non-masked pixels, and None otherwise
         # (the only requirement for pose validity)
-        mask = self.compute_mask(cam, Matrix(self.original_campose["blender_matrix"]), cam2world_matrix)
-        if mask:
-            path = os.path.join(config.get_string("output_dir"), f"mask_{str(self.img_num).zfill(4)}.png")
-            print(f"saving mask as {path}")
-            mask.save(path)
+        if self._is_pose_valid(cam, cam_ob, cam2world_matrix):
             self.img_num += 1
             cam_ob.matrix_world = cam2world_matrix
             cam_ob["room_id"] = room_index
             return True
+            #mask = self.compute_mask(cam, Matrix(self.original_campose["blender_matrix"]), cam2world_matrix)
+            #if mask:
+            #    path = os.path.join(config.get_string("output_dir"), f"mask_{str(self.img_num).zfill(4)}.png")
+            #    print(f"saving mask as {path}")
+            #    mask.save(path)
+            #    self.img_num += 1
+            #    cam_ob.matrix_world = cam2world_matrix
+            #    cam_ob["room_id"] = room_index
+            #    return True
         else:
             return False
+
+    
+    def _is_pose_valid(self, cam, cam_ob, cam2world_matrix):
+        " See _is_pose_valid in CameraSampler.py "
+        if not self._perform_obstacle_in_view_check(cam, cam2world_matrix):
+            print("Obstacle in view")
+            self.obstacles[0] += 1
+            return False
+
+        if self._is_ceiling_visible(cam, cam2world_matrix):
+            print("Ceiling visible")
+            return False
+
+        scene_coverage_score, score, _, coverage_info = self._scene_coverage_score(cam, cam2world_matrix)
+        scene_variance, variance_info = self._scene_variance(cam, cam2world_matrix)
+
+        line = [f"Final score: {scene_coverage_score:4.3f}\tScores: ", " | ".join(["{0}: {1}".format(k, v) for k, v in coverage_info.items()])]
+        line += [f"Variance: {scene_variance:4.3f}", "\tVariance: ", " | ".join(["{0}: {1}".format(k, v) for k, v in variance_info.items()])]
+        if scene_coverage_score < self.min_interest_score or scene_variance < self.min_scene_variance:
+            #print(f"\t\t", " ".join(line))
+            #print("\t", dict(coverage_info))
+            print("Low coverage score / variance")
+            self.obstacles[1] += 1
+            return False
+
+        if self.check_pose_novelty and (not self._check_novel_pose(cam2world_matrix)):
+            print("not novel")
+            return False
+
+        if self._above_objects:
+            is_above_some_object = False
+            for obj in self._above_objects:
+                if self._position_is_above_object(cam2world_matrix.to_translation(), obj):
+                    is_above_some_object = True
+            if not is_above_some_object:
+                print("not above objects")
+                return False
+
+        #print(" ".join(line))
+
+        if not self._enough_common_pixels(cam, cam2world_matrix, Matrix(self.original_campose["blender_matrix"])):
+            print("not enough common pixels")
+            return False
+
+        output_path = super()._determine_output_dir() + "/scores.txt"
+        with open(output_path, "a") as f:
+            f.write(" ".join(line) + "\n")
+
+        #print("return true")
+        return True
+    
+    def _enough_common_pixels(self, cam, cam2world_matrix, original_matrix):
+        # Get position of the corners of the near plane
+        frame = cam.view_frame(scene=bpy.context.scene)
+        # Bring to world space
+        frame = [cam2world_matrix @ v for v in frame]
+
+        # Compute vectors along both sides of the plane
+        vec_x = frame[1] - frame[0]
+        vec_y = frame[3] - frame[0]
+
+        position = cam2world_matrix.to_translation()
+
+        hits_inside = 0
+
+        for x in range(0, self.sqrt_number_of_rays):
+            for y in range(0, self.sqrt_number_of_rays):
+                x_ratio = x / float(self.sqrt_number_of_rays - 1)
+                y_ratio = y / float(self.sqrt_number_of_rays - 1)
+                end = frame[0] + vec_x * x_ratio + vec_y * y_ratio
+                # start = end - offset
+                start = position
+
+                # Send ray from the camera position through the current point on the plane
+                hit, location, _, _, hit_object, _ = bpy.context.scene.ray_cast(bpy.context.view_layer, start, end-start)
+
+                if hit and self.location_inside_frame(cam, location, original_matrix):
+                    hits_inside += 1
+        if hits_inside < self.sqrt_number_of_rays * self.sqrt_number_of_rays * self.min_common_pixels:
+            return False
+        return True
 
     def _sample_cam_poses(self, config):
         """ Samples camera poses according to the given config
@@ -167,6 +254,8 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         self.center_region_weight = config.get_float("center_region_weight", 5)
         self._above_objects = config.get_list("check_if_pose_above_object_list", [])
 
+        self.min_common_pixels = config.get_float("min_common_pixels", 0.4)
+
         if self.proximity_checks:
             # needs to build an bvh tree
             self._init_bvh_tree()
@@ -193,60 +282,90 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         The try-sample cycle is again the same as in Front3DCameraSampler.
         """
         
-        # self._set_cam_intrinsics(cam, config)
+        self._set_cam_intrinsics(cam, config)
         # (setting in sample_and_validate_cam_pose)
 
-        self.original_campose = np.load(config.get_string("original_campose", "test/campose_0001.npz"))
-        room_id = self.original_campose["room_id"]
-        for room_name, (room_obj, _, rid) in self.rooms.items():
-            if room_id == rid:
-                break
-        self.current_room_name = room_name
-        print(f"Original camera pose is located in {room_obj.name}, sampling views from here.")
-        
-        all_tries = 0  # max_tries is now applied per each score
-        tries = 0
+        all_views_in_scene = sorted([f for f in os.listdir(config.get_string("scene_dir")) if f.startswith("campose")])[:5]
 
-        # hide everything except current room
-        print("Hide geometry")
-        hide_all_geometry()
-        print("display single room")
-        show_collection(room_obj)
-        bpy.context.view_layer.update()
+        view_dispatch = {} # which output belongs to which original campose
+        for campose_name in all_views_in_scene:
+            # This will output all additional views from one scene in the same output dir, numbered from 0 onwards.
+            # Renaming and splitting directories is handled in a bash script.
 
-
-        self.min_interest_score = interest_scores[score_index]
-        print("Trying a min_interest_score value: %f" % self.min_interest_score)
-        print("start sampling")
-        for i in range(number_of_poses):
-            # Do until a valid pose has been found or the max number of tries has been reached
-            fraction_tries = self.max_tries // 10
-
-            while tries < self.max_tries:
-                if tries % fraction_tries == 0:
-                    print(f"Performed {tries} tries")
-                tries += 1
-                all_tries += 1
-                # Sample a new cam pose and check if its valid
-                if self.sample_and_validate_cam_pose(cam, cam_ob, config):
-                    # Store new cam pose as next frame
-                    # (cam_ob.matrix_world set in sample_and_validate_cam_pose)
-                    frame_id = bpy.context.scene.frame_end
-                    self._insert_key_frames(cam, cam_ob, frame_id)
-                    #self.insert_geometry_key_frame(room_obj, frame_id)
-                    bpy.context.scene.frame_end = frame_id + 1
+            campose_nr = campose_name.split("_")[1].split(".")[0]
+            view_dispatch[campose_nr] = []
+            #self.original_campose = np.load(config.get_string("original_campose", "test/campose_0001.npz"))
+            self.original_campose = np.load(os.path.join(config.get_string("scene_dir"), campose_name))
+            room_id = self.original_campose["room_id"]
+            for room_name, (room_obj, _, rid) in self.rooms.items():
+                if room_id == rid:
                     break
+            if not room_id == rid:
+                print(f"wrong room id: room with id {room_id} not found!")
+                continue
+            self.current_room_name = room_name
+            print(f"Original camera pose is located in {room_obj.name}, sampling views from here.")
+            
+            all_tries = 0  # max_tries is now applied per each score
+            tries = 0
 
-            if tries >= self.max_tries:
-                if score_index == len(interest_scores) - 1:  # If we tried all score values
-                    print(f"Maximum number of tries reached! Found: {bpy.context.scene.frame_end} poses")
-                    break
-                # Otherwise, try a different lower score and reset the number of trials
-                score_index += 1
-                self.min_interest_score = interest_scores[score_index]
-                print("Trying a different min_interest_score value: %f" % self.min_interest_score)
-                tries = 0
+            # hide everything except current room
+            print("Hide geometry")
+            #hide_all_geometry()
+            print("display single room")
+            #show_collection(room_obj)
+            bpy.context.view_layer.update()
 
-        print(str(all_tries) + " tries were necessary")
+            # add original view to render
+            print("adding original view")
+            self.img_num += 1
+            cam_ob.matrix_world = Matrix(self.original_campose["blender_matrix"])
+            room_obj, floor_obj, room_index = self.rooms[self.current_room_name]
+            cam_ob["room_id"] = room_index
+            frame_id = bpy.context.scene.frame_end
+            self._insert_key_frames(cam, cam_ob, frame_id)
+            bpy.context.scene.frame_end = frame_id + 1
+            view_dispatch[campose_nr].append(self.img_num - 1)
 
+            self.min_interest_score = interest_scores[score_index]
+            print("Trying a min_interest_score value: %f" % self.min_interest_score)
+            print("start sampling")
+            for i in range(number_of_poses):
+                # Do until a valid pose has been found or the max number of tries has been reached
+                fraction_tries = self.max_tries // 10
+
+                while tries < self.max_tries:
+                    if tries % fraction_tries == 0:
+                        print(f"Performed {tries} tries")
+                    tries += 1
+                    all_tries += 1
+                    # Sample a new cam pose and check if its valid
+                    if self.sample_and_validate_cam_pose(cam, cam_ob, config):
+                        # Store new cam pose as next frame
+                        # (cam_ob.matrix_world set in sample_and_validate_cam_pose)
+                        frame_id = bpy.context.scene.frame_end
+                        self._insert_key_frames(cam, cam_ob, frame_id)
+                        #self.insert_geometry_key_frame(room_obj, frame_id)
+                        bpy.context.scene.frame_end = frame_id + 1
+                        view_dispatch[campose_nr].append(self.img_num - 1)
+                        break
+
+                if tries >= self.max_tries:
+                    if score_index == len(interest_scores) - 1:  # If we tried all score values
+                        print(f"Maximum number of tries reached! Found: {bpy.context.scene.frame_end} poses")
+                        break
+                    # Otherwise, try a different lower score and reset the number of trials
+                    score_index += 1
+                    self.min_interest_score = interest_scores[score_index]
+                    print("Trying a different min_interest_score value: %f" % self.min_interest_score)
+                    tries = 0
+
+            print(str(all_tries) + " tries were necessary")
+
+        with open(os.path.join(config.get_string("output_dir"), 'view_dispatch.json'), 'w') as f:
+            f.write(json.dumps(view_dispatch, sort_keys=True, indent=4))
+        for view in view_dispatch:
+                with open(os.path.join(config.get_string("output_dir"), 'views_' + view + '.txt'), 'w') as f:
+                    for additional in view_dispatch[view]:
+                            f.write(str(additional).zfill(4) + '\n')
 

@@ -160,9 +160,11 @@ class Front3DLoader(LoaderInterface):
                 # If there should be a material used
                 if used_mat:
                     if used_mat["texture"]:
-                        raise Exception("The material should use a texture, this was not implemented yet!")
+                        print("The material should use a texture, this was not implemented yet!")
+                        #raise Exception("The material should use a texture, this was not implemented yet!")
                     if used_mat["normaltexture"]:
-                        raise Exception("The material should use a normal texture, this was not implemented yet!")
+                        print("The material should use a normal texture, this was not implemented yet!")
+                        #raise Exception("The material should use a normal texture, this was not implemented yet!")
                     # if there is a normal color used
                     if used_mat["color"]:
                         # Create a new material
