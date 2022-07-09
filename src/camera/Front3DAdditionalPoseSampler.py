@@ -110,7 +110,7 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         room_obj, floor_obj, room_index = self.rooms[self.current_room_name]
 
         # Set intrinsics (should be always the same)
-        self._set_cam_intrinsics(cam, config)
+        #self._set_cam_intrinsics(cam, config)
 
         # Sample camera extrinsics (we do not set them yet for performance reasons)
         cam2world_matrix = self._cam2world_matrix_from_cam_extrinsics(config)
@@ -149,12 +149,12 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
     def _is_pose_valid(self, cam, cam_ob, cam2world_matrix):
         " See _is_pose_valid in CameraSampler.py "
         if not self._perform_obstacle_in_view_check(cam, cam2world_matrix):
-            print("Obstacle in view")
+            #print("Obstacle in view")
             self.obstacles[0] += 1
             return False
 
         if self._is_ceiling_visible(cam, cam2world_matrix):
-            print("Ceiling visible")
+            #print("Ceiling visible")
             return False
 
         scene_coverage_score, score, _, coverage_info = self._scene_coverage_score(cam, cam2world_matrix)
@@ -165,12 +165,12 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         if scene_coverage_score < self.min_interest_score or scene_variance < self.min_scene_variance:
             #print(f"\t\t", " ".join(line))
             #print("\t", dict(coverage_info))
-            print("Low coverage score / variance")
+            #print("Low coverage score / variance")
             self.obstacles[1] += 1
             return False
 
         if self.check_pose_novelty and (not self._check_novel_pose(cam2world_matrix)):
-            print("not novel")
+            #print("not novel")
             return False
 
         if self._above_objects:
@@ -179,13 +179,13 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
                 if self._position_is_above_object(cam2world_matrix.to_translation(), obj):
                     is_above_some_object = True
             if not is_above_some_object:
-                print("not above objects")
+                #print("not above objects")
                 return False
 
         #print(" ".join(line))
 
         if not self._enough_common_pixels(cam, cam2world_matrix, Matrix(self.original_campose["blender_matrix"])):
-            print("not enough common pixels")
+            #print("not enough common pixels")
             return False
 
         output_path = super()._determine_output_dir() + "/scores.txt"
@@ -282,13 +282,13 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         The try-sample cycle is again the same as in Front3DCameraSampler.
         """
         
-        self._set_cam_intrinsics(cam, config)
+        #self._set_cam_intrinsics(cam, config)
         # (setting in sample_and_validate_cam_pose)
 
-        all_views_in_scene = sorted([f for f in os.listdir(config.get_string("scene_dir")) if f.startswith("campose")])[:5]
+        all_views_in_scene = sorted([f for f in os.listdir(config.get_string("scene_dir")) if f.startswith("campose")])
 
         view_dispatch = {} # which output belongs to which original campose
-        for campose_name in all_views_in_scene:
+        for campose_name in all_views_in_scene[:config.get_int("max_views")]:
             # This will output all additional views from one scene in the same output dir, numbered from 0 onwards.
             # Renaming and splitting directories is handled in a bash script.
 
@@ -296,6 +296,10 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
             view_dispatch[campose_nr] = []
             #self.original_campose = np.load(config.get_string("original_campose", "test/campose_0001.npz"))
             self.original_campose = np.load(os.path.join(config.get_string("scene_dir"), campose_name))
+
+            #print(self.original_campose["intrinsic"])
+            self._set_cam_intrinsics(cam, config)
+
             room_id = self.original_campose["room_id"]
             for room_name, (room_obj, _, rid) in self.rooms.items():
                 if room_id == rid:
@@ -310,9 +314,9 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
             tries = 0
 
             # hide everything except current room
-            print("Hide geometry")
+            #print("Hide geometry")
             #hide_all_geometry()
-            print("display single room")
+            #print("display single room")
             #show_collection(room_obj)
             bpy.context.view_layer.update()
 

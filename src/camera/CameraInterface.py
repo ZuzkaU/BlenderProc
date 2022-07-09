@@ -114,6 +114,7 @@ class CameraInterface(Module):
         
         # If defined, get cam_K from config
         cam_K = config.get_list("cam_K", [])
+        print("cam_K", cam_K)
         if cam_K:
             cam['loaded_intrinsics'] = cam_K        
 

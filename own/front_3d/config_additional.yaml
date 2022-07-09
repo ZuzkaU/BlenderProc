@@ -25,7 +25,8 @@
                 "diffuse_bounces": 200,
                 "glossy_bounces": 200,
                 "transmission_bounces": 200,
-                "transparency_bounces": 200
+                "transparency_bounces": 200,
+                "cam_K": [277.12811989, 0., 160., 0., 311.76912635, 120., 0., 0., 1.]
             }
         }
     },
@@ -61,7 +62,8 @@
             {
                 #"original_campose": "<args:2>",
                 "scene_dir": "<args:2>",
-                "number_of_samples": 20,
+                "number_of_samples": 0,
+                "max_views": 100,
                 "min_interest_score": 0.15,
                 "max_tries": 5000,
                 "proximity_checks": {
