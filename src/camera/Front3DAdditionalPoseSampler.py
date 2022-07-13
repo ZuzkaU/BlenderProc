@@ -110,7 +110,7 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         room_obj, floor_obj, room_index = self.rooms[self.current_room_name]
 
         # Set intrinsics (should be always the same)
-        #self._set_cam_intrinsics(cam, config)
+        self._set_cam_intrinsics(cam, config)
 
         # Sample camera extrinsics (we do not set them yet for performance reasons)
         cam2world_matrix = self._cam2world_matrix_from_cam_extrinsics(config)
@@ -150,27 +150,35 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         " See _is_pose_valid in CameraSampler.py "
         if not self._perform_obstacle_in_view_check(cam, cam2world_matrix):
             #print("Obstacle in view")
+            self.errors["obstacle"] += 1
             self.obstacles[0] += 1
             return False
 
-        if self._is_ceiling_visible(cam, cam2world_matrix):
-            #print("Ceiling visible")
-            return False
+        #if self._is_ceiling_visible(cam, cam2world_matrix):
+        #    #print("Ceiling visible")
+        #    self.errors["ceiling"] += 1
+        #    return False
 
         scene_coverage_score, score, _, coverage_info = self._scene_coverage_score(cam, cam2world_matrix)
         scene_variance, variance_info = self._scene_variance(cam, cam2world_matrix)
 
         line = [f"Final score: {scene_coverage_score:4.3f}\tScores: ", " | ".join(["{0}: {1}".format(k, v) for k, v in coverage_info.items()])]
         line += [f"Variance: {scene_variance:4.3f}", "\tVariance: ", " | ".join(["{0}: {1}".format(k, v) for k, v in variance_info.items()])]
-        if scene_coverage_score < self.min_interest_score or scene_variance < self.min_scene_variance:
+        if scene_coverage_score < self.min_interest_score:
             #print(f"\t\t", " ".join(line))
             #print("\t", dict(coverage_info))
             #print("Low coverage score / variance")
             self.obstacles[1] += 1
+            self.errors["coverage"] += 1
             return False
+        if scene_variance < self.min_scene_variance:
+            self.errors["variance"] += 1
+            return False
+
 
         if self.check_pose_novelty and (not self._check_novel_pose(cam2world_matrix)):
             #print("not novel")
+            self.errors["novelty"] += 1
             return False
 
         if self._above_objects:
@@ -180,12 +188,14 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
                     is_above_some_object = True
             if not is_above_some_object:
                 #print("not above objects")
+                self.errors["above"] += 1
                 return False
 
         #print(" ".join(line))
 
         if not self._enough_common_pixels(cam, cam2world_matrix, Matrix(self.original_campose["blender_matrix"])):
             #print("not enough common pixels")
+            self.errors["common"] += 1
             return False
 
         output_path = super()._determine_output_dir() + "/scores.txt"
@@ -288,7 +298,7 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
         all_views_in_scene = sorted([f for f in os.listdir(config.get_string("scene_dir")) if f.startswith("campose")])
 
         view_dispatch = {} # which output belongs to which original campose
-        for campose_name in all_views_in_scene[:config.get_int("max_views")]:
+        for campose_name in all_views_in_scene[:config.get_int("max_views", 100)]:
             # This will output all additional views from one scene in the same output dir, numbered from 0 onwards.
             # Renaming and splitting directories is handled in a bash script.
 
@@ -312,6 +322,15 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
             
             all_tries = 0  # max_tries is now applied per each score
             tries = 0
+            self.errors = dict()
+            self.errors["obstacle"] = 0
+            self.errors["ceiling"] = 0
+            self.errors["coverage"] = 0
+            self.errors["variance"] = 0
+            self.errors["novelty"] = 0
+            self.errors["above"] = 0
+            self.errors["common"] = 0
+            original_frame = bpy.context.scene.frame_end
 
             # hide everything except current room
             #print("Hide geometry")
@@ -356,7 +375,7 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
 
                 if tries >= self.max_tries:
                     if score_index == len(interest_scores) - 1:  # If we tried all score values
-                        print(f"Maximum number of tries reached! Found: {bpy.context.scene.frame_end} poses")
+                        print(f"Maximum number of tries reached! Found: {bpy.context.scene.frame_end - original_frame} poses")
                         break
                     # Otherwise, try a different lower score and reset the number of trials
                     score_index += 1
@@ -365,6 +384,7 @@ class Front3DAdditionalPoseSampler(Front3DCameraSampler):
                     tries = 0
 
             print(str(all_tries) + " tries were necessary")
+            print("Error types:", self.errors)
 
         with open(os.path.join(config.get_string("output_dir"), 'view_dispatch.json'), 'w') as f:
             f.write(json.dumps(view_dispatch, sort_keys=True, indent=4))

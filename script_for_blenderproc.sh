@@ -1,9 +1,16 @@
 #!/bin/bash
 
-# 
-for FIELD in $(ls ../../front3d-sample)
+FRONT=$1
+FUTURE=$2
+PANOPTIC=$3
+for FILE in $(ls $FRONT)
 do
-    FILE=$(echo $FIELD".json")
-    python run.py own/front_3d/config_additional.yaml ../../3D-FRONT/$FILE ../../3D-FUTURE-model ../../front3d-sample/$FIELD ../../front3d-sample/$FIELD/output
-    #python rename_files.py  ../../front3d-sample/$FIELD output
+    SCENE=${FILE::-5} # name without .json
+    if [ -d $PANOPTIC/$SCENE/additional ] 
+    then
+        continue # additional folder already exists
+    fi
+    python run.py own/front_3d/config_additional.yaml $FRONT/$FILE $FUTURE $PANOPTIC/$SCENE $PANOPTIC/$SCENE/additional || break
+    trap "echo Exited!; exit;" SIGINT SIGTERM
+    echo $SCENE >> additional-scenes-created.txt
 done

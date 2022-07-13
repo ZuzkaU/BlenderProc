@@ -93,7 +93,7 @@ class SegMapRenderer(RendererInterface):
         # stored is [-2048, 2048]. As blender does not allow negative values for colors, we use [0, 2048] ** 3 as our
         # color space which allows ~8 billion different colors/objects. This should be enough.
         self.render_colorspace_size_per_dimension = 2048
-        self._convert_to_npz = config.get_bool("convert_to_npz", True)
+        self._convert_to_npz = config.get_bool("convert_to_npz", False)
 
         if self._convert_to_npz:
             from src.utility.Config import NotFoundError

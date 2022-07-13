@@ -517,9 +517,9 @@ class Front3DLoader(LoaderInterface):
                     used_obj_name = ele["title"]
                     if "/" in used_obj_name:
                         used_obj_name = used_obj_name.split("/")[0]
-                if used_obj_name == "":
+                else:
                     used_obj_name = "others"
-                print(used_obj_name)
+                #print(used_obj_name)
 
                 for obj in objs:
                     obj.name = used_obj_name
